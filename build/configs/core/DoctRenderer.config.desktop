@@ -1,0 +1,8 @@
+<Settings>
+<file>../editors/sdkjs/common/Native/native.js</file>
+<file>../editors/sdkjs/common/Native/jquery_native.js</file>
+<allfonts>../editors/sdkjs/common/AllFonts.js</allfonts>
+<file>../editors/web-apps/vendor/xregexp/xregexp-all-min.js</file>
+<sdkjs>../editors/sdkjs</sdkjs>
+<dictionaries>../dictionaries</dictionaries>
+</Settings>
