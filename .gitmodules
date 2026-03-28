@@ -10,9 +10,6 @@
 [submodule "sdkjs"]
 	path = sdkjs
 	url = https://github.com/Euro-Office/sdkjs.git
-[submodule "sdkjs-forms"]
-	path = sdkjs-forms
-	url = https://github.com/Euro-Office/sdkjs-forms.git
 [submodule "dictionaries"]
 	path = dictionaries
 	url = https://github.com/Euro-Office/dictionaries.git
@@ -25,3 +22,6 @@
 [submodule "core-fonts"]
 	path = core-fonts
 	url = https://github.com/Euro-Office/core-fonts.git
+[submodule "sdkjs-forms"]
+	path = sdkjs-forms
+	url = https://github.com/Euro-Office/sdkjs-forms.git
