@@ -63,7 +63,7 @@ target "_common" {
 
 target "core-base" {
   inherits   = ["_common"]
-  context    = "."
+  context    = ".."
   dockerfile = "./core/.docker/core.bake.Dockerfile"
   target     = "core-base"
   tags       = ["${REGISTRY}/core-base:${TAG}"]
@@ -73,7 +73,7 @@ target "core-base" {
 
 target "core-wasm" {
   inherits   = ["_common"]
-  context    = "."
+  context    = ".."
   dockerfile = "./core/.docker/core-wasm.bake.Dockerfile"
   tags       = ["${REGISTRY}/core-wasm:${TAG}"]
   cache-from = ["type=local,src=/tmp/${REGISTRY}/core-wasm"]
@@ -82,7 +82,7 @@ target "core-wasm" {
 
 target "desktop-js" {
   inherits   = ["_common"]
-  context    = "."
+  context    = ".."
   dockerfile = "./desktop-apps/.docker/desktop-js.bake.Dockerfile"
   tags       = ["${REGISTRY}/desktop-js:${TAG}"]
   cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-js"]
@@ -91,7 +91,7 @@ target "desktop-js" {
 
 target "sdkjs-desktop" {
   inherits   = ["_common"]
-  context    = "."
+  context    = ".."
   dockerfile = "./sdkjs/.docker/sdkjs.bake.Dockerfile"
   tags       = ["${REGISTRY}/sdkjs-desktop:${TAG}"]
   target     = "sdkjs-desktop"
@@ -104,7 +104,7 @@ target "sdkjs-desktop" {
 
 target "web-apps" {
   inherits   = ["_common"]
-  context    = "."
+  context    = ".."
   dockerfile = "./web-apps/.docker/web-apps.bake.Dockerfile"
   tags       = ["${REGISTRY}/web-apps:${TAG}"]
   cache-from = ["type=local,src=/tmp/${REGISTRY}/web-apps"]
@@ -117,7 +117,7 @@ target "web-apps" {
 
 target "desktop-builder" {
   inherits   = ["_common"]
-  context    = "."
+  context    = ".."
   dockerfile = "./desktop-apps/.docker/desktop-apps.bake.Dockerfile"
   target     = "desktop-builder"
   tags       = ["${REGISTRY}/desktop-builder:${TAG}"]
@@ -137,8 +137,8 @@ target "desktop-builder" {
 
 target "desktop-export" {
   inherits   = ["_common"]
-  context    = "."
-  dockerfile = "./build/desktop-composer.bake.Dockerfile"
+  context    = ".."
+  dockerfile = "./build/.docker/desktop-composer.bake.Dockerfile"
   target     = "desktop-export"       # points to the FROM scratch stage
   tags       = ["${REGISTRY}/desktop-export:${TAG}"]
   contexts = {
@@ -150,7 +150,7 @@ target "desktop-export" {
   }
 
   # Export the filesystem directly to a local directory instead of an image
-  output = ["type=local,dest=./dist/desktop"]
+  output = ["type=local,dest=./deploy/desktop"]
 
   cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-builder"]  # reuses builder cache
 }
