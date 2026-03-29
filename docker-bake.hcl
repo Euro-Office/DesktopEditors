@@ -64,7 +64,7 @@ target "_common" {
 target "core-base" {
   inherits   = ["_common"]
   context    = "."
-  dockerfile = "./build/docker/core.Dockerfile"
+  dockerfile = "./core/.docker/core.bake.Dockerfile"
   target     = "core-base"
   tags       = ["${REGISTRY}/core-base:${TAG}"]
   cache-from = ["type=local,src=/tmp/${REGISTRY}/core-base"]
@@ -74,56 +74,41 @@ target "core-base" {
 target "core-wasm" {
   inherits   = ["_common"]
   context    = "."
-  dockerfile = "./build/docker/core-wasm.Dockerfile"
+  dockerfile = "./core/.docker/core-wasm.bake.Dockerfile"
   tags       = ["${REGISTRY}/core-wasm:${TAG}"]
   cache-from = ["type=local,src=/tmp/${REGISTRY}/core-wasm"]
   cache-to   = ["type=local,dest=/tmp/${REGISTRY}/core-wasm,mode=max"]
 }
 
-target "web-base" {
-  inherits   = ["_common"]
-  context    = "."
-  dockerfile = "./build/docker/web-base.Dockerfile"
-  tags       = ["${REGISTRY}/web-base:${TAG}"]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/web-base"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/web-base,mode=max"]
-}
-
 target "desktop-js" {
   inherits   = ["_common"]
   context    = "."
-  dockerfile = "./build/docker/desktop-js.Dockerfile"
+  dockerfile = "./desktop-apps/.docker/desktop-js.bake.Dockerfile"
   tags       = ["${REGISTRY}/desktop-js:${TAG}"]
   cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-js"]
   cache-to   = ["type=local,dest=/tmp/${REGISTRY}/desktop-js,mode=max"]
-  contexts = {
-    web-base     = "target:web-base"
-  }
 }
 
 target "sdkjs-desktop" {
   inherits   = ["_common"]
   context    = "."
-  dockerfile = "./build/docker/sdkjs.Dockerfile"
+  dockerfile = "./sdkjs/.docker/sdkjs.bake.Dockerfile"
   tags       = ["${REGISTRY}/sdkjs-desktop:${TAG}"]
+  target     = "sdkjs-desktop"
   cache-from = ["type=local,src=/tmp/${REGISTRY}/sdkjs-desktop"]
   cache-to   = ["type=local,dest=/tmp/${REGISTRY}/sdkjs-desktop,mode=max"]
   contexts = {
     core-wasm    = "target:core-wasm"
-    web-base     = "target:web-base"
   }
 }
 
 target "web-apps" {
   inherits   = ["_common"]
   context    = "."
-  dockerfile = "./build/docker/web-apps.Dockerfile"
+  dockerfile = "./web-apps/.docker/web-apps.bake.Dockerfile"
   tags       = ["${REGISTRY}/web-apps:${TAG}"]
   cache-from = ["type=local,src=/tmp/${REGISTRY}/web-apps"]
   cache-to   = ["type=local,dest=/tmp/${REGISTRY}/web-apps,mode=max"]
-  contexts = {
-    web-base     = "target:web-base"
-  }
 }
 
 # ──────────────────────────────────────────────
@@ -133,7 +118,7 @@ target "web-apps" {
 target "desktop-builder" {
   inherits   = ["_common"]
   context    = "."
-  dockerfile = "./build/docker/desktop-apps.Dockerfile"
+  dockerfile = "./desktop-apps/.docker/desktop-apps.bake.Dockerfile"
   target     = "desktop-builder"
   tags       = ["${REGISTRY}/desktop-builder:${TAG}"]
   contexts = {
@@ -153,7 +138,7 @@ target "desktop-builder" {
 target "desktop-export" {
   inherits   = ["_common"]
   context    = "."
-  dockerfile = "./build/docker/desktop-apps.Dockerfile"
+  dockerfile = "./build/desktop-composer.bake.Dockerfile"
   target     = "desktop-export"       # points to the FROM scratch stage
   tags       = ["${REGISTRY}/desktop-export:${TAG}"]
   contexts = {
