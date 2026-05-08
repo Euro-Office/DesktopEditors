@@ -17,11 +17,32 @@ QT_DIR="${QT_DIR:-${REPO_ROOT}/_qt}"
 OUT_DIR="${BUILD_DIR}/deploy/macos/arm64"
 LOG_DIR="${BUILD_DIR}/deploy/macos/logs"
 DERIVED_DATA_DIR="${BUILD_DIR}/deploy/macos/DerivedData/arm64"
+TOOLS_BIN_DIR="${BUILD_DIR}/deploy/macos/tools/bin"
+CMAKE_VENV_DIR="${BUILD_DIR}/deploy/macos/tools/cmake-venv"
 BUILD_TOOLS_DIR="${REPO_ROOT}/build_tools"
 DESKTOP_APPS_DIR="${DESKTOP_APPS_DIR:-${REPO_ROOT}/desktop-apps}"
 XCODE_PROJECT="${DESKTOP_APPS_DIR}/macos/ONLYOFFICE.xcodeproj"
 
 PREFLIGHT_FAILURES=0
+EXTERNAL_DESKTOP_APPS_LINK=""
+EXTERNAL_REPO_SIBLING_LINKS=()
+
+cleanup_external_desktop_apps_link() {
+  if [[ -n "${EXTERNAL_DESKTOP_APPS_LINK}" && -L "${EXTERNAL_DESKTOP_APPS_LINK}" ]]; then
+    rm "${EXTERNAL_DESKTOP_APPS_LINK}"
+    mkdir -p "${EXTERNAL_DESKTOP_APPS_LINK}"
+  fi
+  local link_path
+  if [[ "${#EXTERNAL_REPO_SIBLING_LINKS[@]}" -gt 0 ]]; then
+    for link_path in "${EXTERNAL_REPO_SIBLING_LINKS[@]}"; do
+      if [[ -L "${link_path}" ]]; then
+        rm "${link_path}"
+      fi
+    done
+  fi
+}
+
+trap cleanup_external_desktop_apps_link EXIT
 
 usage() {
   cat <<EOF
@@ -32,7 +53,7 @@ Usage:
 Environment:
   MIN_FREE_GIB=150
   EO_SKIP_SPACE_CHECK=1
-  QT_DIR=/path/to/qt-layout
+  QT_DIR=/path/to/qt-root
   BUILD_TOOLS_REV=${BUILD_TOOLS_REV}
   CODESIGNING_IDENTITY="Developer ID Application: ..."
   DEVELOPMENT_TEAM=<team-id>
@@ -68,6 +89,30 @@ check_optional_cmd() {
   else
     warn "missing optional command: ${cmd}"
   fi
+}
+
+cmake_version() {
+  "$1" --version 2>/dev/null | awk 'NR == 1 { print $3 }'
+}
+
+cmake_is_compatible_version() {
+  local version="$1"
+  local major minor
+
+  IFS=. read -r major minor _ <<< "${version}"
+  if [[ ! "${major}" =~ ^[0-9]+$ || ! "${minor}" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+
+  if (( major != 3 )); then
+    return 1
+  fi
+
+  (( minor >= 21 ))
+}
+
+python_venv_available() {
+  python3 -m venv --help >/dev/null 2>&1
 }
 
 free_gib() {
@@ -106,6 +151,35 @@ check_xcode() {
   }
 }
 
+check_cmake() {
+  local needs_local_cmake=0
+
+  if command -v cmake >/dev/null 2>&1; then
+    local cmake_path cmake_found_version
+    cmake_path="$(command -v cmake)"
+    cmake_found_version="$(cmake_version "${cmake_path}")"
+    if cmake_is_compatible_version "${cmake_found_version}"; then
+      info "CMake ${cmake_found_version} found: ${cmake_path}"
+      return
+    fi
+
+    warn "CMake ${cmake_found_version:-unknown} found at ${cmake_path}; build_tools HEIF requires CMake >= 3.21 and < 4"
+    needs_local_cmake=1
+  else
+    warn "CMake was not found; build.sh will create a local CMake >= 3.21 and < 4"
+    needs_local_cmake=1
+  fi
+
+  if [[ "${needs_local_cmake}" == "1" ]]; then
+    if python_venv_available; then
+      info "build.sh will create a local CMake venv under ${CMAKE_VENV_DIR}"
+    else
+      warn "python3 venv support is required to create a local compatible CMake"
+      PREFLIGHT_FAILURES=$((PREFLIGHT_FAILURES + 1))
+    fi
+  fi
+}
+
 discover_homebrew_qt() {
   local prefix=""
 
@@ -128,26 +202,54 @@ discover_homebrew_qt() {
   fi
 }
 
-check_qt() {
-  if [[ -x "${QT_DIR}/macos/bin/qmake" ]]; then
-    info "Qt layout found: ${QT_DIR}/macos"
-    return
+qt_dir_name_has_version() {
+  local dir_name
+  dir_name="$(basename "$1")"
+  [[ "${dir_name}" =~ [0-9]+\.[0-9]+ ]]
+}
+
+qt_prefix_version() {
+  local prefix="$1"
+  local version
+  version="$("${prefix}/bin/qmake" -query QT_VERSION 2>/dev/null | sed 's/^QT_VERSION://')"
+  if [[ -z "${version}" ]]; then
+    fail "could not determine Qt version from ${prefix}/bin/qmake"
+  fi
+  printf '%s\n' "${version}"
+}
+
+has_versioned_qt_layout() {
+  local layout_root="$1"
+
+  if [[ ! -x "${layout_root}/macos/bin/qmake" && ! -x "${layout_root}/clang_64/bin/qmake" ]]; then
+    return 1
   fi
 
-  if [[ -x "${QT_DIR}/clang_64/bin/qmake" ]]; then
-    info "Qt layout found: ${QT_DIR}/clang_64"
+  if qt_dir_name_has_version "${layout_root}"; then
+    return 0
+  fi
+
+  warn "ignoring Qt layout without versioned parent: ${layout_root}"
+  return 1
+}
+
+check_qt() {
+  if has_versioned_qt_layout "${QT_DIR}"; then
+    info "Qt layout found: ${QT_DIR}"
     return
   fi
 
   local homebrew_qt
   homebrew_qt="$(discover_homebrew_qt || true)"
   if [[ -n "${homebrew_qt}" ]]; then
+    local qt_version
+    qt_version="$(qt_prefix_version "${homebrew_qt}")"
     info "Qt found via Homebrew/qmake: ${homebrew_qt}"
-    info "build.sh will create a local Qt layout under ${QT_DIR}/macos during the build"
+    info "build.sh will create a local Qt layout under ${QT_DIR}/${qt_version}/macos during the build"
     return
   fi
 
-  warn "Qt was not found. Set QT_DIR to a layout containing macos/bin/qmake or clang_64/bin/qmake."
+  warn "Qt was not found. Set QT_DIR to a build_tools layout root containing <version>/macos/bin/qmake or <version>/clang_64/bin/qmake."
   PREFLIGHT_FAILURES=$((PREFLIGHT_FAILURES + 1))
 }
 
@@ -192,6 +294,7 @@ preflight() {
 
   check_disk_space
   check_xcode
+  check_cmake
   check_qt
   check_signing
 
@@ -206,10 +309,127 @@ ensure_arm64_host() {
   fi
 }
 
+is_empty_dir() {
+  local dir="$1"
+  [[ -d "${dir}" ]] && [[ -z "$(find "${dir}" -mindepth 1 -maxdepth 1 -print -quit)" ]]
+}
+
+resolved_path() {
+  local path="$1"
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "${path}"
+    return
+  fi
+
+  python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "${path}"
+}
+
+absolute_path() {
+  local path="$1"
+  printf '%s/%s\n' "$(cd "$(dirname "${path}")" && pwd)" "$(basename "${path}")"
+}
+
+ensure_external_repo_sibling_for_xcode() {
+  local name="$1"
+  local target_dir="$2"
+  local desktop_apps_parent
+  local link_path
+  local resolved_target_dir
+
+  desktop_apps_parent="$(cd "${DESKTOP_APPS_DIR}/.." && pwd)"
+  link_path="${desktop_apps_parent}/${name}"
+  resolved_target_dir="$(resolved_path "${target_dir}")"
+
+  if [[ -e "${link_path}" || -L "${link_path}" ]]; then
+    local resolved_link_path
+    resolved_link_path="$(resolved_path "${link_path}")"
+    if [[ "${resolved_link_path}" != "${resolved_target_dir}" ]]; then
+      fail "${link_path} already resolves to ${resolved_link_path}, expected ${resolved_target_dir}"
+    fi
+    return
+  fi
+
+  if [[ ! -d "${target_dir}" ]]; then
+    fail "${target_dir} does not exist; cannot link ${name} for Xcode relative paths"
+  fi
+
+  ln -s "${target_dir}" "${link_path}"
+  EXTERNAL_REPO_SIBLING_LINKS+=("${link_path}")
+  info "linked ${name} into ${link_path} for Xcode relative paths"
+}
+
+ensure_external_repo_siblings_for_xcode() {
+  local default_desktop_apps_dir="${REPO_ROOT}/desktop-apps"
+  local absolute_desktop_apps_dir
+  absolute_desktop_apps_dir="$(absolute_path "${DESKTOP_APPS_DIR}")"
+
+  if [[ "${absolute_desktop_apps_dir}" == "${default_desktop_apps_dir}" ]]; then
+    return
+  fi
+
+  ensure_external_repo_sibling_for_xcode build_tools "${BUILD_TOOLS_DIR}"
+  ensure_external_repo_sibling_for_xcode core "${REPO_ROOT}/core"
+  ensure_external_repo_sibling_for_xcode desktop-sdk "${REPO_ROOT}/desktop-sdk"
+  ensure_external_repo_sibling_for_xcode dictionaries "${REPO_ROOT}/dictionaries"
+}
+
+ensure_external_desktop_apps_for_build_tools() {
+  local default_desktop_apps_dir="${REPO_ROOT}/desktop-apps"
+  local absolute_desktop_apps_dir
+  local resolved_desktop_apps_dir
+  absolute_desktop_apps_dir="$(absolute_path "${DESKTOP_APPS_DIR}")"
+  resolved_desktop_apps_dir="$(resolved_path "${DESKTOP_APPS_DIR}")"
+
+  if [[ "${absolute_desktop_apps_dir}" == "${default_desktop_apps_dir}" ]]; then
+    return
+  fi
+
+  if [[ ! -d "${DESKTOP_APPS_DIR}" ]]; then
+    fail "external desktop-apps checkout not found: ${DESKTOP_APPS_DIR}"
+  fi
+
+  if [[ -L "${default_desktop_apps_dir}" ]]; then
+    local linked_target
+    linked_target="$(resolved_path "${default_desktop_apps_dir}")"
+    if [[ "${linked_target}" != "${resolved_desktop_apps_dir}" ]]; then
+      fail "${default_desktop_apps_dir} already points to ${linked_target}, expected ${resolved_desktop_apps_dir}"
+    fi
+    return
+  fi
+
+  if [[ -e "${default_desktop_apps_dir}" ]]; then
+    if ! is_empty_dir "${default_desktop_apps_dir}"; then
+      fail "${default_desktop_apps_dir} exists and is not empty; cannot link external desktop-apps checkout"
+    fi
+    rmdir "${default_desktop_apps_dir}"
+  fi
+
+  ln -s "${DESKTOP_APPS_DIR}" "${default_desktop_apps_dir}"
+  EXTERNAL_DESKTOP_APPS_LINK="${default_desktop_apps_dir}"
+  info "linked external desktop-apps checkout into ${default_desktop_apps_dir} for build_tools"
+}
+
 ensure_submodules() {
   info "syncing submodules"
   git -C "${REPO_ROOT}" config --local url.https://github.com/.insteadOf git@github.com:
   git -C "${REPO_ROOT}" submodule sync --recursive
+
+  local default_desktop_apps_dir="${REPO_ROOT}/desktop-apps"
+  if [[ "$(resolved_path "${DESKTOP_APPS_DIR}")" != "${default_desktop_apps_dir}" ]]; then
+    info "using external desktop-apps checkout: ${DESKTOP_APPS_DIR}"
+    git -C "${REPO_ROOT}" submodule update --init --recursive \
+      core \
+      core-fonts \
+      desktop-sdk \
+      dictionaries \
+      document-templates \
+      sdkjs \
+      sdkjs-forms \
+      web-apps
+    ensure_external_desktop_apps_for_build_tools
+    return
+  fi
+
   git -C "${REPO_ROOT}" submodule update --init --recursive
 }
 
@@ -224,9 +444,262 @@ ensure_build_tools() {
   git -C "${BUILD_TOOLS_DIR}" checkout "${BUILD_TOOLS_REV}"
 }
 
+ensure_python_shim() {
+  if command -v python >/dev/null 2>&1; then
+    return
+  fi
+
+  mkdir -p "${TOOLS_BIN_DIR}"
+  ln -sf "$(command -v python3)" "${TOOLS_BIN_DIR}/python"
+  export PATH="${TOOLS_BIN_DIR}:${PATH}"
+  info "using local python shim: ${TOOLS_BIN_DIR}/python -> $(command -v python3)"
+}
+
+prepend_path_var() {
+  local name="$1"
+  local value="$2"
+  local current="${!name:-}"
+
+  case ":${current}:" in
+    *":${value}:"*) ;;
+    *)
+      if [[ -n "${current}" ]]; then
+        export "${name}=${value}:${current}"
+      else
+        export "${name}=${value}"
+      fi
+      ;;
+  esac
+}
+
+prepare_build_environment() {
+  local katana_include="${REPO_ROOT}/core/Common/3dParty/html/katana-parser/src"
+  local gumbo_include="${REPO_ROOT}/core/Common/3dParty/html/gumbo-parser/src"
+  local hyphen_include="${REPO_ROOT}/core/Common/3dParty/hyphen"
+  local hunspell_include="${REPO_ROOT}/core/Common/3dParty/hunspell/hunspell/src"
+
+  mkdir -p "${TOOLS_BIN_DIR}"
+  cat > "${TOOLS_BIN_DIR}/grunt" <<'EOF'
+#!/usr/bin/env bash
+set -e
+
+dir="${PWD}"
+while [[ "${dir}" != "/" ]]; do
+  if [[ -x "${dir}/node_modules/.bin/grunt" ]]; then
+    exec "${dir}/node_modules/.bin/grunt" "$@"
+  fi
+  dir="$(dirname "${dir}")"
+done
+
+echo "grunt shim: node_modules/.bin/grunt not found from ${PWD}" >&2
+exit 127
+EOF
+  chmod +x "${TOOLS_BIN_DIR}/grunt"
+  prepend_path_var PATH "${TOOLS_BIN_DIR}"
+  unset NPM_CONFIG_OMIT npm_config_omit
+  export NPM_CONFIG_INCLUDE=dev
+
+  prepend_path_var CPATH "${katana_include}"
+  prepend_path_var CPATH "${gumbo_include}"
+  prepend_path_var CPATH "${hyphen_include}"
+  prepend_path_var CPATH "${hunspell_include}"
+  info "using local Node tool shim: ${TOOLS_BIN_DIR}/grunt"
+  info "configuring npm to include dev dependencies required by Grunt build files"
+  info "using qmake compatibility include paths: ${katana_include}, ${gumbo_include}, ${hyphen_include}, ${hunspell_include}"
+}
+
+reset_incomplete_boost_build() {
+  local boost_build_dir="${REPO_ROOT}/core/Common/3dParty/boost/build/${BUILD_TOOLS_PLATFORM}"
+  local boost_lib_dir="${boost_build_dir}/lib"
+
+  if [[ ! -d "${boost_build_dir}" ]]; then
+    return
+  fi
+
+  local required_libs=(
+    libboost_system.a
+    libboost_filesystem.a
+    libboost_date_time.a
+    libboost_regex.a
+  )
+  local missing=()
+  local lib
+
+  for lib in "${required_libs[@]}"; do
+    if [[ ! -f "${boost_lib_dir}/${lib}" ]]; then
+      missing+=("${lib}")
+    fi
+  done
+
+  if [[ "${#missing[@]}" -eq 0 ]]; then
+    return
+  fi
+
+  warn "removing incomplete Boost ${BUILD_TOOLS_PLATFORM} build; missing ${missing[*]}"
+  rm -rf "${boost_build_dir}"
+}
+
+patch_boost_datetime_header() {
+  local source="$1"
+
+  if [[ ! -f "${source}" ]]; then
+    return
+  fi
+
+  if ! grep -q 'numeric_cast<.*_type>' "${source}"; then
+    return
+  fi
+
+  perl -0pi -e '
+    s/numeric_cast<hour_type>\(h\)/static_cast<hour_type>(h)/g;
+    s/numeric_cast<min_type>\(m\)/static_cast<min_type>(m)/g;
+    s/numeric_cast<sec_type>\(s\)/static_cast<sec_type>(s)/g;
+  ' "${source}"
+  info "patched Boost.DateTime numeric casts for current Clang/Boost compatibility: ${source}"
+}
+
+prepare_boost_sources() {
+  local boost_dir="${REPO_ROOT}/core/Common/3dParty/boost"
+  local boost_src="${boost_dir}/boost_1_72_0"
+  local source_header="${boost_src}/libs/date_time/include/boost/date_time/posix_time/posix_time_duration.hpp"
+  local installed_header="${boost_dir}/build/${BUILD_TOOLS_PLATFORM}/include/boost/date_time/posix_time/posix_time_duration.hpp"
+
+  printf '%s' 'boost_version_5' > "${boost_dir}/boost.data"
+
+  if [[ ! -d "${boost_src}" ]]; then
+    info "fetching Boost 1.72 source checkout for macOS compatibility patches"
+    git -C "${boost_dir}" clone --recursive --depth=1 \
+      https://github.com/boostorg/boost.git boost_1_72_0 -b boost-1.72.0
+  fi
+
+  patch_boost_datetime_header "${source_header}"
+  patch_boost_datetime_header "${installed_header}"
+}
+
+iwork_module_version() {
+  awk -F\" '/check_module_version/ { print $2; exit }' \
+    "${BUILD_TOOLS_DIR}/scripts/core_common/modules/iwork.py"
+}
+
+patch_libetonyek_clang_compat() {
+  local table_source="${REPO_ROOT}/core/Common/3dParty/apple/libetonyek/src/lib/IWORKTable.cpp"
+  local path_source="${REPO_ROOT}/core/Common/3dParty/apple/libetonyek/src/lib/contexts/IWORKPathElement.cpp"
+  local patched=0
+
+  if [[ ! -f "${table_source}" ]]; then
+    fail "expected libetonyek source was not fetched: ${table_source}"
+  fi
+
+  if [[ ! -f "${path_source}" ]]; then
+    fail "expected libetonyek source was not fetched: ${path_source}"
+  fi
+
+  if grep -q 'numeric_cast<int>(' "${table_source}"; then
+    perl -0pi -e 's/numeric_cast<int>\((col|r|numRepeat|cell\.m_columnSpan|cell\.m_rowSpan)\)/static_cast<int>($1)/g' "${table_source}"
+    patched=1
+  fi
+
+  if grep -q 'numeric_cast<unsigned>(' "${path_source}"; then
+    perl -0pi -e 's/numeric_cast<unsigned>\(get\(m_point\)\.m_x\)/static_cast<unsigned>(get(m_point).m_x)/g; s/numeric_cast<unsigned>\(m_value\)/static_cast<unsigned>(m_value)/g' "${path_source}"
+    patched=1
+  fi
+
+  if [[ "${patched}" -eq 1 ]]; then
+    info "patched libetonyek numeric casts for current Clang/Boost compatibility"
+  fi
+}
+
+patch_odf_clang_compat() {
+  local sources=(
+    "${REPO_ROOT}/core/OdfFile/Reader/Converter/pptx_table_context.cpp"
+    "${REPO_ROOT}/core/OdfFile/Reader/Converter/xlsx_borders.cpp"
+  )
+  local source
+  local patched=0
+
+  for source in "${sources[@]}"; do
+    if [[ ! -f "${source}" ]]; then
+      fail "expected ODF converter source was not found: ${source}"
+    fi
+
+    if grep -q 'boost::lexical_cast<int>(borderStyle->get_length().get_value_unit(odf_types::length::emu))' "${source}"; then
+      perl -0pi -e 's/boost::lexical_cast<int>\(borderStyle->get_length\(\)\.get_value_unit\(odf_types::length::emu\)\)/static_cast<int>(borderStyle->get_length().get_value_unit(odf_types::length::emu))/g' "${source}"
+      patched=1
+    fi
+  done
+
+  if [[ "${patched}" -eq 1 ]]; then
+    info "patched ODF table border width casts for current Clang/Boost compatibility"
+  fi
+}
+
+prepare_iwork_sources() {
+  local apple_dir="${REPO_ROOT}/core/Common/3dParty/apple"
+  local version
+
+  info "preparing iwork sources for macOS"
+  (
+    cd "${apple_dir}"
+    python fetch.py
+  )
+
+  version="$(iwork_module_version)"
+  if [[ -z "${version}" ]]; then
+    fail "could not determine build_tools iwork module version"
+  fi
+  printf '%s' "${version}" > "${apple_dir}/module.version"
+
+  patch_libetonyek_clang_compat
+}
+
+ensure_compatible_cmake() {
+  local cmake_path cmake_found_version
+
+  if command -v cmake >/dev/null 2>&1; then
+    cmake_path="$(command -v cmake)"
+    cmake_found_version="$(cmake_version "${cmake_path}")"
+    if cmake_is_compatible_version "${cmake_found_version}"; then
+      info "using CMake ${cmake_found_version}: ${cmake_path}"
+      return
+    fi
+  fi
+
+  if [[ -x "${CMAKE_VENV_DIR}/bin/cmake" ]]; then
+    cmake_found_version="$(cmake_version "${CMAKE_VENV_DIR}/bin/cmake")"
+    if ! cmake_is_compatible_version "${cmake_found_version}"; then
+      rm -rf "${CMAKE_VENV_DIR}"
+    fi
+  fi
+
+  if [[ ! -x "${CMAKE_VENV_DIR}/bin/cmake" ]]; then
+    info "creating local CMake >= 3.21 and < 4 under ${CMAKE_VENV_DIR}"
+    python_venv_available || fail "python3 venv support is required to create a local compatible CMake"
+    python3 -m venv "${CMAKE_VENV_DIR}"
+    "${CMAKE_VENV_DIR}/bin/python" -m pip install --upgrade pip
+    "${CMAKE_VENV_DIR}/bin/python" -m pip install 'cmake>=3.21,<4'
+  fi
+
+  export PATH="${CMAKE_VENV_DIR}/bin:${PATH}"
+  cmake_path="$(command -v cmake)"
+  cmake_found_version="$(cmake_version "${cmake_path}")"
+  if ! cmake_is_compatible_version "${cmake_found_version}"; then
+    fail "compatible CMake was not found after setup; got ${cmake_found_version:-unknown} at ${cmake_path}"
+  fi
+
+  info "using local CMake ${cmake_found_version}: ${cmake_path}"
+}
+
 copy_qt_layout_from_prefix() {
   local prefix="$1"
-  local target="${QT_DIR}/macos"
+  local qt_version
+  qt_version="$(qt_prefix_version "${prefix}")"
+  local layout_root="${QT_DIR}"
+
+  if ! qt_dir_name_has_version "${layout_root}"; then
+    layout_root="${QT_DIR}/${qt_version}"
+  fi
+
+  local target="${layout_root}/macos"
 
   info "creating local Qt layout at ${target} from ${prefix}"
   rm -rf "${target}"
@@ -241,10 +714,12 @@ copy_qt_layout_from_prefix() {
       ln -s "${item}" "${target}/${name}"
     fi
   done
+
+  QT_DIR="${layout_root}"
 }
 
 ensure_qt_layout() {
-  if [[ -x "${QT_DIR}/macos/bin/qmake" || -x "${QT_DIR}/clang_64/bin/qmake" ]]; then
+  if has_versioned_qt_layout "${QT_DIR}"; then
     info "using Qt layout at ${QT_DIR}"
     return
   fi
@@ -252,7 +727,7 @@ ensure_qt_layout() {
   local homebrew_qt
   homebrew_qt="$(discover_homebrew_qt || true)"
   if [[ -z "${homebrew_qt}" ]]; then
-    fail "Qt was not found. Install Qt or set QT_DIR to a layout containing macos/bin/qmake or clang_64/bin/qmake."
+    fail "Qt was not found. Install Qt or set QT_DIR to a build_tools layout root containing <version>/macos/bin/qmake or <version>/clang_64/bin/qmake."
   fi
 
   copy_qt_layout_from_prefix "${homebrew_qt}"
@@ -261,6 +736,11 @@ ensure_qt_layout() {
 build_native_payload() {
   mkdir -p "${LOG_DIR}"
   info "building native desktop payload via build_tools (${BUILD_TOOLS_PLATFORM})"
+  ensure_compatible_cmake
+  ensure_python_shim
+  prepare_build_environment
+  reset_incomplete_boost_build
+  prepare_boost_sources
 
   (
     cd "${BUILD_TOOLS_DIR}"
@@ -271,6 +751,8 @@ build_native_payload() {
       --qt-dir="${QT_DIR}" \
       --clean=1 \
       --git-protocol=https
+    prepare_iwork_sources
+    patch_odf_clang_compat
     python3 make.py
   ) 2>&1 | tee "${LOG_DIR}/build-tools-${BUILD_TOOLS_PLATFORM}.log"
 
@@ -390,6 +872,7 @@ main() {
       ensure_arm64_host
       ensure_submodules
       ensure_build_tools
+      ensure_external_repo_siblings_for_xcode
       ensure_qt_layout
       build_native_payload
       build_xcode_app
