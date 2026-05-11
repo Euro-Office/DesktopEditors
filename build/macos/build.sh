@@ -59,7 +59,7 @@ Environment:
   EO_SKIP_SPACE_CHECK=1
   QT_DIR=/path/to/qt-root
   BUILD_TOOLS_REV=${BUILD_TOOLS_REV}
-  EO_MACOS_PRODUCTS=split|suite|text,spreadsheet,presentation,pdf
+  EO_MACOS_PRODUCTS=split|suite|text,spreadsheet,presentation,pdf,visio
   CODESIGNING_IDENTITY="Developer ID Application: ..."
   DEVELOPMENT_TEAM=<team-id>
   EO_SKIP_LAUNCH=1
@@ -788,13 +788,13 @@ entitlements_file() {
 selected_products() {
   case "${MACOS_PRODUCTS}" in
     split)
-      printf '%s\n' text spreadsheet presentation pdf
+      printf '%s\n' text spreadsheet presentation pdf visio
       ;;
     suite)
       printf '%s\n' suite
       ;;
     all)
-      printf '%s\n' suite text spreadsheet presentation pdf
+      printf '%s\n' suite text spreadsheet presentation pdf visio
       ;;
     *)
       printf '%s\n' "${MACOS_PRODUCTS//,/ }" | xargs -n1
@@ -808,6 +808,7 @@ product_app_name() {
     spreadsheet) printf '%s Spreadsheet\n' "${PRODUCT_FAMILY_NAME}" ;;
     presentation) printf '%s Presentation\n' "${PRODUCT_FAMILY_NAME}" ;;
     pdf) printf '%s PDF\n' "${PRODUCT_FAMILY_NAME}" ;;
+    visio) printf '%s Visio\n' "${PRODUCT_FAMILY_NAME}" ;;
     suite) printf '%s\n' "${PRODUCT_NAME}" ;;
     *) fail "unknown macOS product component: $1" ;;
   esac
@@ -819,6 +820,7 @@ product_executable_name() {
     spreadsheet) printf 'EuroOfficeSpreadsheet\n' ;;
     presentation) printf 'EuroOfficePresentation\n' ;;
     pdf) printf 'EuroOfficePDF\n' ;;
+    visio) printf 'EuroOfficeVisio\n' ;;
     suite) printf '%s\n' "${PRODUCT_NAME}" ;;
     *) fail "unknown macOS product component: $1" ;;
   esac
@@ -826,7 +828,7 @@ product_executable_name() {
 
 product_bundle_id() {
   case "$1" in
-    text|spreadsheet|presentation|pdf) printf '%s.%s\n' "${BUNDLE_ID}" "$1" ;;
+    text|spreadsheet|presentation|pdf|visio) printf '%s.%s\n' "${BUNDLE_ID}" "$1" ;;
     suite) printf '%s\n' "${BUNDLE_ID}" ;;
     *) fail "unknown macOS product component: $1" ;;
   esac
@@ -838,6 +840,7 @@ product_url_scheme() {
     spreadsheet) printf 'euro-office-spreadsheet\n' ;;
     presentation) printf 'euro-office-presentation\n' ;;
     pdf) printf 'euro-office-pdf\n' ;;
+    visio) printf 'euro-office-visio\n' ;;
     suite) printf 'euro-office\n' ;;
     *) fail "unknown macOS product component: $1" ;;
   esac
@@ -871,6 +874,9 @@ allowed_extensions = {
     },
     "pdf": {
         "pdf", "docxf", "oform",
+    },
+    "visio": {
+        "vsdx", "vssx", "vstx", "vsdm", "vssm", "vstm",
     },
 }
 
@@ -1018,7 +1024,8 @@ clean_macos_product_outputs() {
     "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Text.app" \
     "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Spreadsheet.app" \
     "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Presentation.app" \
-    "${OUT_DIR}/${PRODUCT_FAMILY_NAME} PDF.app"
+    "${OUT_DIR}/${PRODUCT_FAMILY_NAME} PDF.app" \
+    "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Visio.app"
 }
 
 stage_macos_apps() {
