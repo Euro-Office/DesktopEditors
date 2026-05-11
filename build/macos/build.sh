@@ -766,7 +766,42 @@ build_native_payload() {
     fail "expected desktop payload was not produced: ${payload_dir}"
   fi
 
+  ensure_draw_empty_template "${payload_dir}"
+
   info "native payload ready: ${payload_dir}"
+}
+
+ensure_draw_empty_template() {
+  local payload_dir="$1"
+  local converter_dir="${payload_dir}/converter"
+  local template="${converter_dir}/empty/new.vsdx"
+  local x2t="${converter_dir}/x2t"
+  local tmp_dir
+
+  if [[ -f "${template}" ]]; then
+    return
+  fi
+
+  if [[ ! -x "${x2t}" ]]; then
+    fail "x2t converter missing; cannot generate Draw empty template: ${x2t}"
+  fi
+
+  mkdir -p "${converter_dir}/empty"
+  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/autarq-vsdx.XXXXXX")"
+  printf 'VSDY;v10;0;' > "${tmp_dir}/empty.vsdt"
+
+  if ! "${x2t}" "${tmp_dir}/empty.vsdt" "${template}"; then
+    rm -rf "${tmp_dir}"
+    fail "failed to generate Draw empty template: ${template}"
+  fi
+
+  rm -rf "${tmp_dir}"
+
+  if [[ ! -f "${template}" ]]; then
+    fail "Draw empty template was not produced: ${template}"
+  fi
+
+  info "generated Draw empty template: ${template}"
 }
 
 codesign_identity() {
