@@ -1007,11 +1007,26 @@ stage_product_app() {
   info "app exported to ${app}"
 }
 
+clean_macos_product_outputs() {
+  if [[ -z "${OUT_DIR}" || "${OUT_DIR}" != "${BUILD_DIR}/deploy/macos/"* ]]; then
+    fail "refusing to clean unexpected macOS output directory: ${OUT_DIR}"
+  fi
+
+  rm -rf \
+    "${OUT_DIR}/${PRODUCT_NAME}.app" \
+    "${OUT_DIR}/${PRODUCT_FAMILY_NAME}.app" \
+    "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Text.app" \
+    "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Spreadsheet.app" \
+    "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Presentation.app" \
+    "${OUT_DIR}/${PRODUCT_FAMILY_NAME} PDF.app"
+}
+
 stage_macos_apps() {
   if [[ -z "${BUILT_XCODE_APP}" || ! -d "${BUILT_XCODE_APP}" ]]; then
     fail "base Xcode app was not staged"
   fi
 
+  clean_macos_product_outputs
   STAGED_APPS=()
 
   local component
