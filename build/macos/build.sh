@@ -954,6 +954,7 @@ info["CFBundleIdentifier"] = bundle_id
 info["EOProductComponent"] = component
 if icon_file:
     info["CFBundleIconFile"] = icon_file
+    info.pop("CFBundleIconName", None)
 info["CFBundleURLTypes"] = [{
     "CFBundleTypeRole": "Editor",
     "CFBundleURLSchemes": [url_scheme],
