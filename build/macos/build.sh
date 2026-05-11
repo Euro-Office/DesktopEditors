@@ -5,8 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${BUILD_DIR}/.." && pwd)"
 
-PRODUCT_NAME="${PRODUCT_NAME:-Euro-Office}"
+PRODUCT_FAMILY_NAME="${PRODUCT_FAMILY_NAME:-Euro-Office}"
+PRODUCT_NAME="${PRODUCT_NAME:-${PRODUCT_FAMILY_NAME}}"
 BUNDLE_ID="${PRODUCT_BUNDLE_IDENTIFIER:-org.euro-office.desktopeditors}"
+MACOS_PRODUCTS="${EO_MACOS_PRODUCTS:-split}"
 SCHEME="${SCHEME:-ONLYOFFICE-arm}"
 ARCH="${1:-}"
 BUILD_TOOLS_REV="${BUILD_TOOLS_REV:-c5f6c2e02b50dfcc5c53a207f9a6cde84896de91}"
@@ -26,6 +28,8 @@ XCODE_PROJECT="${DESKTOP_APPS_DIR}/macos/ONLYOFFICE.xcodeproj"
 PREFLIGHT_FAILURES=0
 EXTERNAL_DESKTOP_APPS_LINK=""
 EXTERNAL_REPO_SIBLING_LINKS=()
+BUILT_XCODE_APP=""
+STAGED_APPS=()
 
 cleanup_external_desktop_apps_link() {
   if [[ -n "${EXTERNAL_DESKTOP_APPS_LINK}" && -L "${EXTERNAL_DESKTOP_APPS_LINK}" ]]; then
@@ -55,6 +59,7 @@ Environment:
   EO_SKIP_SPACE_CHECK=1
   QT_DIR=/path/to/qt-root
   BUILD_TOOLS_REV=${BUILD_TOOLS_REV}
+  EO_MACOS_PRODUCTS=split|suite|text,spreadsheet,presentation,pdf
   CODESIGNING_IDENTITY="Developer ID Application: ..."
   DEVELOPMENT_TEAM=<team-id>
   EO_SKIP_LAUNCH=1
@@ -764,6 +769,157 @@ build_native_payload() {
   info "native payload ready: ${payload_dir}"
 }
 
+codesign_identity() {
+  local sign_identity="${CODESIGNING_IDENTITY:-${CODE_SIGN_IDENTITY:--}}"
+  if [[ -z "${sign_identity}" ]]; then
+    sign_identity="-"
+  fi
+
+  printf '%s\n' "${sign_identity}"
+}
+
+entitlements_file() {
+  local entitlements="${DESKTOP_APPS_DIR}/macos/ONLYOFFICE/Resources/${SCHEME}/ONLYOFFICE.entitlements"
+  if [[ -f "${entitlements}" ]]; then
+    printf '%s\n' "${entitlements}"
+  fi
+}
+
+selected_products() {
+  case "${MACOS_PRODUCTS}" in
+    split)
+      printf '%s\n' text spreadsheet presentation pdf
+      ;;
+    suite)
+      printf '%s\n' suite
+      ;;
+    all)
+      printf '%s\n' suite text spreadsheet presentation pdf
+      ;;
+    *)
+      printf '%s\n' "${MACOS_PRODUCTS//,/ }" | xargs -n1
+      ;;
+  esac
+}
+
+product_app_name() {
+  case "$1" in
+    text) printf '%s Text\n' "${PRODUCT_FAMILY_NAME}" ;;
+    spreadsheet) printf '%s Spreadsheet\n' "${PRODUCT_FAMILY_NAME}" ;;
+    presentation) printf '%s Presentation\n' "${PRODUCT_FAMILY_NAME}" ;;
+    pdf) printf '%s PDF\n' "${PRODUCT_FAMILY_NAME}" ;;
+    suite) printf '%s\n' "${PRODUCT_NAME}" ;;
+    *) fail "unknown macOS product component: $1" ;;
+  esac
+}
+
+product_executable_name() {
+  case "$1" in
+    text) printf 'EuroOfficeText\n' ;;
+    spreadsheet) printf 'EuroOfficeSpreadsheet\n' ;;
+    presentation) printf 'EuroOfficePresentation\n' ;;
+    pdf) printf 'EuroOfficePDF\n' ;;
+    suite) printf '%s\n' "${PRODUCT_NAME}" ;;
+    *) fail "unknown macOS product component: $1" ;;
+  esac
+}
+
+product_bundle_id() {
+  case "$1" in
+    text|spreadsheet|presentation|pdf) printf '%s.%s\n' "${BUNDLE_ID}" "$1" ;;
+    suite) printf '%s\n' "${BUNDLE_ID}" ;;
+    *) fail "unknown macOS product component: $1" ;;
+  esac
+}
+
+product_url_scheme() {
+  case "$1" in
+    text) printf 'euro-office-text\n' ;;
+    spreadsheet) printf 'euro-office-spreadsheet\n' ;;
+    presentation) printf 'euro-office-presentation\n' ;;
+    pdf) printf 'euro-office-pdf\n' ;;
+    suite) printf 'euro-office\n' ;;
+    *) fail "unknown macOS product component: $1" ;;
+  esac
+}
+
+patch_product_info_plist() {
+  local plist="$1"
+  local app_name="$2"
+  local executable_name="$3"
+  local bundle_id="$4"
+  local url_scheme="$5"
+  local component="$6"
+
+  python3 - "${plist}" "${app_name}" "${executable_name}" "${bundle_id}" "${url_scheme}" "${component}" <<'PY'
+import plistlib
+import sys
+
+plist_path, app_name, executable_name, bundle_id, url_scheme, component = sys.argv[1:7]
+
+allowed_extensions = {
+    "text": {
+        "docx", "doc", "odt", "ott", "rtf", "txt", "htm", "html", "dotx",
+        "fodt", "xml", "epub", "mht", "fb2", "pages", "hwp", "hwpx", "hml",
+    },
+    "spreadsheet": {
+        "xlsx", "xls", "ods", "xltx", "ots", "fods", "csv", "xlsm", "xlsb",
+        "numbers",
+    },
+    "presentation": {
+        "ppt", "pptx", "odp", "ppsx", "pps", "potx", "otp", "key", "odg",
+    },
+    "pdf": {
+        "pdf", "docxf", "oform",
+    },
+}
+
+if component not in allowed_extensions:
+    raise SystemExit(f"unsupported product component: {component}")
+
+with open(plist_path, "rb") as plist_file:
+    info = plistlib.load(plist_file)
+
+filtered_document_types = []
+for document_type in info.get("CFBundleDocumentTypes", []):
+    extensions = [ext.lower() for ext in document_type.get("CFBundleTypeExtensions", [])]
+    if any(ext in allowed_extensions[component] for ext in extensions):
+        filtered_document_types.append(document_type)
+
+if not filtered_document_types:
+    raise SystemExit(f"no document types matched product component: {component}")
+
+info["CFBundleName"] = app_name
+info["CFBundleDisplayName"] = app_name
+info["CFBundleExecutable"] = executable_name
+info["CFBundleIdentifier"] = bundle_id
+info["EOProductComponent"] = component
+info["CFBundleURLTypes"] = [{
+    "CFBundleTypeRole": "Editor",
+    "CFBundleURLSchemes": [url_scheme],
+}]
+info["CFBundleDocumentTypes"] = filtered_document_types
+
+with open(plist_path, "wb") as plist_file:
+    plistlib.dump(info, plist_file, fmt=plistlib.FMT_XML, sort_keys=False)
+PY
+}
+
+resign_app() {
+  local app="$1"
+  local sign_identity entitlements
+
+  sign_identity="$(codesign_identity)"
+  entitlements="$(entitlements_file)"
+
+  local codesign_args=(--force --options runtime --sign "${sign_identity}")
+  if [[ -n "${entitlements}" ]]; then
+    codesign_args+=(--entitlements "${entitlements}")
+  fi
+
+  codesign "${codesign_args[@]}" "${app}"
+}
+
 build_xcode_app() {
   mkdir -p "${OUT_DIR}" "${LOG_DIR}"
 
@@ -771,10 +927,8 @@ build_xcode_app() {
     fail "Xcode project not found: ${XCODE_PROJECT}"
   fi
 
-  local sign_identity="${CODESIGNING_IDENTITY:-${CODE_SIGN_IDENTITY:--}}"
-  if [[ -z "${sign_identity}" ]]; then
-    sign_identity="-"
-  fi
+  local sign_identity
+  sign_identity="$(codesign_identity)"
 
   info "building ${PRODUCT_NAME}.app with scheme ${SCHEME}"
   xcodebuild \
@@ -807,18 +961,80 @@ build_xcode_app() {
     fail "Xcode did not produce an app bundle under ${products_dir}"
   fi
 
-  rm -rf "${OUT_DIR}/${PRODUCT_NAME}.app"
-  ditto "${built_app}" "${OUT_DIR}/${PRODUCT_NAME}.app"
-  info "app exported to ${OUT_DIR}/${PRODUCT_NAME}.app"
+  local staging_dir="${BUILD_DIR}/deploy/macos/staging/${ARCH}"
+  rm -rf "${staging_dir}"
+  mkdir -p "${staging_dir}"
+  ditto "${built_app}" "${staging_dir}/${PRODUCT_NAME}.app"
+  BUILT_XCODE_APP="${staging_dir}/${PRODUCT_NAME}.app"
+  info "base app staged at ${BUILT_XCODE_APP}"
+}
+
+stage_product_app() {
+  local component="$1"
+  local app_name executable_name bundle_id url_scheme app old_exe candidate
+
+  app_name="$(product_app_name "${component}")"
+  executable_name="$(product_executable_name "${component}")"
+  bundle_id="$(product_bundle_id "${component}")"
+  url_scheme="$(product_url_scheme "${component}")"
+  app="${OUT_DIR}/${app_name}.app"
+
+  rm -rf "${app}"
+  ditto "${BUILT_XCODE_APP}" "${app}"
+
+  if [[ "${component}" != "suite" ]]; then
+    old_exe="${app}/Contents/MacOS/${PRODUCT_NAME}"
+    if [[ ! -x "${old_exe}" ]]; then
+      old_exe=""
+      for candidate in "${app}/Contents/MacOS"/*; do
+        if [[ -f "${candidate}" && -x "${candidate}" ]]; then
+          old_exe="${candidate}"
+          break
+        fi
+      done
+    fi
+
+    if [[ -z "${old_exe}" || ! -x "${old_exe}" ]]; then
+      fail "app executable missing under ${app}/Contents/MacOS"
+    fi
+
+    mv "${old_exe}" "${app}/Contents/MacOS/${executable_name}"
+    patch_product_info_plist "${app}/Contents/Info.plist" "${app_name}" "${executable_name}" "${bundle_id}" "${url_scheme}" "${component}"
+    resign_app "${app}"
+  fi
+
+  STAGED_APPS+=("${app}")
+  info "app exported to ${app}"
+}
+
+stage_macos_apps() {
+  if [[ -z "${BUILT_XCODE_APP}" || ! -d "${BUILT_XCODE_APP}" ]]; then
+    fail "base Xcode app was not staged"
+  fi
+
+  STAGED_APPS=()
+
+  local component
+  while IFS= read -r component; do
+    [[ -z "${component}" ]] && continue
+    stage_product_app "${component}"
+  done < <(selected_products)
 }
 
 verify_app() {
-  local app="${OUT_DIR}/${PRODUCT_NAME}.app"
-  local exe="${app}/Contents/MacOS/${PRODUCT_NAME}"
+  local app="$1"
+  local plist="${app}/Contents/Info.plist"
+  local app_name executable_name bundle_id exe log_name
 
   if [[ ! -d "${app}" ]]; then
     fail "app bundle missing: ${app}"
   fi
+
+  app_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "${plist}")"
+  executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${plist}")"
+  bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${plist}")"
+  exe="${app}/Contents/MacOS/${executable_name}"
+  log_name="${app_name// /-}"
 
   if [[ ! -x "${exe}" ]]; then
     local candidate
@@ -835,11 +1051,11 @@ verify_app() {
     fail "app executable missing under ${app}/Contents/MacOS"
   fi
 
-  info "checking executable architecture"
-  file "${exe}" | tee "${LOG_DIR}/file-${PRODUCT_NAME}.log"
+  info "checking executable architecture for ${app_name}"
+  file "${exe}" | tee "${LOG_DIR}/file-${log_name}.log"
   file "${exe}" | grep -q 'arm64' || fail "expected arm64 executable: ${exe}"
 
-  info "verifying code signature"
+  info "verifying code signature for ${app_name}"
   codesign --verify --deep --strict --verbose=4 "${app}"
 
   if [[ "${EO_SKIP_LAUNCH:-0}" == "1" ]]; then
@@ -847,13 +1063,26 @@ verify_app() {
     return
   fi
 
-  info "running launch smoke test"
+  info "running launch smoke test for ${app_name}"
   open -n "${app}"
   sleep 4
-  if ! pgrep -x "${PRODUCT_NAME}" >/dev/null 2>&1; then
-    fail "launch smoke test did not find a running ${PRODUCT_NAME} process"
+  if ! pgrep -f "${app}/Contents/MacOS/${executable_name}" >/dev/null 2>&1; then
+    fail "launch smoke test did not find a running ${app_name} process"
   fi
-  osascript -e "tell application \"${PRODUCT_NAME}\" to quit" >/dev/null 2>&1 || true
+  osascript -e "tell application id \"${bundle_id}\" to quit" >/dev/null 2>&1 || true
+  sleep 1
+  pkill -f "${app}/Contents/MacOS/${executable_name}" >/dev/null 2>&1 || true
+}
+
+verify_apps() {
+  local app
+  if [[ "${#STAGED_APPS[@]}" -eq 0 ]]; then
+    fail "no macOS apps were staged"
+  fi
+
+  for app in "${STAGED_APPS[@]}"; do
+    verify_app "${app}"
+  done
 }
 
 main() {
@@ -876,8 +1105,9 @@ main() {
       ensure_qt_layout
       build_native_payload
       build_xcode_app
-      verify_app
-      info "macOS ${ARCH} build complete: ${OUT_DIR}/${PRODUCT_NAME}.app"
+      stage_macos_apps
+      verify_apps
+      info "macOS ${ARCH} build complete: ${OUT_DIR}"
       ;;
     *)
       usage

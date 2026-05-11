@@ -44,10 +44,13 @@ cd DesktopEditors/build
 ./macos/build.sh arm64
 ```
 
-The default output is:
+The default macOS output is four standalone Euro-Office apps:
 
 ```text
-DesktopEditors/build/deploy/macos/arm64/Euro-Office.app
+DesktopEditors/build/deploy/macos/arm64/Euro-Office Text.app
+DesktopEditors/build/deploy/macos/arm64/Euro-Office Spreadsheet.app
+DesktopEditors/build/deploy/macos/arm64/Euro-Office Presentation.app
+DesktopEditors/build/deploy/macos/arm64/Euro-Office PDF.app
 ```
 
 The macOS build currently targets Apple Silicon first. Intel and universal
@@ -78,6 +81,7 @@ MIN_FREE_GIB=150                 # minimum free disk space check
 EO_SKIP_SPACE_CHECK=1            # bypass the free-space guard
 QT_DIR=/path/to/qt-root          # contains <version>/macos/bin/qmake or <version>/clang_64/bin/qmake
 DESKTOP_APPS_DIR=/path/to/desktop-apps
+EO_MACOS_PRODUCTS=split          # split, suite, all, or comma list: text,spreadsheet,presentation,pdf
 BUILD_TOOLS_REV=<commit>         # ONLYOFFICE/build_tools revision
 CODESIGNING_IDENTITY="Developer ID Application: ..."
 DEVELOPMENT_TEAM=<team-id>
