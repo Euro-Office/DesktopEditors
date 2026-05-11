@@ -44,14 +44,14 @@ cd DesktopEditors/build
 ./macos/build.sh arm64
 ```
 
-The default macOS output is five standalone Euro-Office apps:
+The default macOS output is five standalone AUTARQ-branded apps:
 
 ```text
-DesktopEditors/build/deploy/macos/arm64/Euro-Office Text.app
-DesktopEditors/build/deploy/macos/arm64/Euro-Office Spreadsheet.app
-DesktopEditors/build/deploy/macos/arm64/Euro-Office Presentation.app
-DesktopEditors/build/deploy/macos/arm64/Euro-Office PDF.app
-DesktopEditors/build/deploy/macos/arm64/Euro-Office Visio.app
+DesktopEditors/build/deploy/macos/arm64/AUTARQ Write.app
+DesktopEditors/build/deploy/macos/arm64/AUTARQ Sheets.app
+DesktopEditors/build/deploy/macos/arm64/AUTARQ Keynote.app
+DesktopEditors/build/deploy/macos/arm64/AUTARQ PDF.app
+DesktopEditors/build/deploy/macos/arm64/AUTARQ Draw.app
 ```
 
 The macOS build currently targets Apple Silicon first. Intel and universal

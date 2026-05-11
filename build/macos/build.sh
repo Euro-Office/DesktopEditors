@@ -5,9 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${BUILD_DIR}/.." && pwd)"
 
-PRODUCT_FAMILY_NAME="${PRODUCT_FAMILY_NAME:-Euro-Office}"
-PRODUCT_NAME="${PRODUCT_NAME:-${PRODUCT_FAMILY_NAME}}"
-BUNDLE_ID="${PRODUCT_BUNDLE_IDENTIFIER:-org.euro-office.desktopeditors}"
+PRODUCT_FAMILY_NAME="${PRODUCT_FAMILY_NAME:-AUTARQ}"
+PRODUCT_NAME="${PRODUCT_NAME:-${PRODUCT_FAMILY_NAME} Office}"
+BUNDLE_ID="${PRODUCT_BUNDLE_IDENTIFIER:-com.autarq.office}"
 MACOS_PRODUCTS="${EO_MACOS_PRODUCTS:-split}"
 SCHEME="${SCHEME:-ONLYOFFICE-arm}"
 ARCH="${1:-}"
@@ -804,11 +804,11 @@ selected_products() {
 
 product_app_name() {
   case "$1" in
-    text) printf '%s Text\n' "${PRODUCT_FAMILY_NAME}" ;;
-    spreadsheet) printf '%s Spreadsheet\n' "${PRODUCT_FAMILY_NAME}" ;;
-    presentation) printf '%s Presentation\n' "${PRODUCT_FAMILY_NAME}" ;;
+    text) printf '%s Write\n' "${PRODUCT_FAMILY_NAME}" ;;
+    spreadsheet) printf '%s Sheets\n' "${PRODUCT_FAMILY_NAME}" ;;
+    presentation) printf '%s Keynote\n' "${PRODUCT_FAMILY_NAME}" ;;
     pdf) printf '%s PDF\n' "${PRODUCT_FAMILY_NAME}" ;;
-    visio) printf '%s Visio\n' "${PRODUCT_FAMILY_NAME}" ;;
+    visio) printf '%s Draw\n' "${PRODUCT_FAMILY_NAME}" ;;
     suite) printf '%s\n' "${PRODUCT_NAME}" ;;
     *) fail "unknown macOS product component: $1" ;;
   esac
@@ -816,11 +816,11 @@ product_app_name() {
 
 product_executable_name() {
   case "$1" in
-    text) printf 'EuroOfficeText\n' ;;
-    spreadsheet) printf 'EuroOfficeSpreadsheet\n' ;;
-    presentation) printf 'EuroOfficePresentation\n' ;;
-    pdf) printf 'EuroOfficePDF\n' ;;
-    visio) printf 'EuroOfficeVisio\n' ;;
+    text) printf 'AUTARQWrite\n' ;;
+    spreadsheet) printf 'AUTARQSheets\n' ;;
+    presentation) printf 'AUTARQKeynote\n' ;;
+    pdf) printf 'AUTARQPDF\n' ;;
+    visio) printf 'AUTARQDraw\n' ;;
     suite) printf '%s\n' "${PRODUCT_NAME}" ;;
     *) fail "unknown macOS product component: $1" ;;
   esac
@@ -828,7 +828,11 @@ product_executable_name() {
 
 product_bundle_id() {
   case "$1" in
-    text|spreadsheet|presentation|pdf|visio) printf '%s.%s\n' "${BUNDLE_ID}" "$1" ;;
+    text) printf '%s.write\n' "${BUNDLE_ID}" ;;
+    spreadsheet) printf '%s.sheets\n' "${BUNDLE_ID}" ;;
+    presentation) printf '%s.keynote\n' "${BUNDLE_ID}" ;;
+    pdf) printf '%s.pdf\n' "${BUNDLE_ID}" ;;
+    visio) printf '%s.draw\n' "${BUNDLE_ID}" ;;
     suite) printf '%s\n' "${BUNDLE_ID}" ;;
     *) fail "unknown macOS product component: $1" ;;
   esac
@@ -836,12 +840,24 @@ product_bundle_id() {
 
 product_url_scheme() {
   case "$1" in
-    text) printf 'euro-office-text\n' ;;
-    spreadsheet) printf 'euro-office-spreadsheet\n' ;;
-    presentation) printf 'euro-office-presentation\n' ;;
-    pdf) printf 'euro-office-pdf\n' ;;
-    visio) printf 'euro-office-visio\n' ;;
-    suite) printf 'euro-office\n' ;;
+    text) printf 'autarq-write\n' ;;
+    spreadsheet) printf 'autarq-sheets\n' ;;
+    presentation) printf 'autarq-keynote\n' ;;
+    pdf) printf 'autarq-pdf\n' ;;
+    visio) printf 'autarq-draw\n' ;;
+    suite) printf 'autarq-office\n' ;;
+    *) fail "unknown macOS product component: $1" ;;
+  esac
+}
+
+product_icon_file() {
+  case "$1" in
+    text) printf 'autarq-write\n' ;;
+    spreadsheet) printf 'autarq-sheets\n' ;;
+    presentation) printf 'autarq-keynote\n' ;;
+    pdf) printf 'autarq-pdf\n' ;;
+    visio) printf 'autarq-draw\n' ;;
+    suite) printf '' ;;
     *) fail "unknown macOS product component: $1" ;;
   esac
 }
@@ -853,12 +869,13 @@ patch_product_info_plist() {
   local bundle_id="$4"
   local url_scheme="$5"
   local component="$6"
+  local icon_file="$7"
 
-  python3 - "${plist}" "${app_name}" "${executable_name}" "${bundle_id}" "${url_scheme}" "${component}" <<'PY'
+  python3 - "${plist}" "${app_name}" "${executable_name}" "${bundle_id}" "${url_scheme}" "${component}" "${icon_file}" <<'PY'
 import plistlib
 import sys
 
-plist_path, app_name, executable_name, bundle_id, url_scheme, component = sys.argv[1:7]
+plist_path, app_name, executable_name, bundle_id, url_scheme, component, icon_file = sys.argv[1:8]
 
 allowed_extensions = {
     "text": {
@@ -900,6 +917,8 @@ info["CFBundleDisplayName"] = app_name
 info["CFBundleExecutable"] = executable_name
 info["CFBundleIdentifier"] = bundle_id
 info["EOProductComponent"] = component
+if icon_file:
+    info["CFBundleIconFile"] = icon_file
 info["CFBundleURLTypes"] = [{
     "CFBundleTypeRole": "Editor",
     "CFBundleURLSchemes": [url_scheme],
@@ -977,12 +996,13 @@ build_xcode_app() {
 
 stage_product_app() {
   local component="$1"
-  local app_name executable_name bundle_id url_scheme app old_exe candidate
+  local app_name executable_name bundle_id url_scheme icon_file icon_source app old_exe candidate
 
   app_name="$(product_app_name "${component}")"
   executable_name="$(product_executable_name "${component}")"
   bundle_id="$(product_bundle_id "${component}")"
   url_scheme="$(product_url_scheme "${component}")"
+  icon_file="$(product_icon_file "${component}")"
   app="${OUT_DIR}/${app_name}.app"
 
   rm -rf "${app}"
@@ -1005,7 +1025,15 @@ stage_product_app() {
     fi
 
     mv "${old_exe}" "${app}/Contents/MacOS/${executable_name}"
-    patch_product_info_plist "${app}/Contents/Info.plist" "${app_name}" "${executable_name}" "${bundle_id}" "${url_scheme}" "${component}"
+    if [[ -n "${icon_file}" ]]; then
+      icon_source="${DESKTOP_APPS_DIR}/macos/ONLYOFFICE/Resources/ProductIcons/${icon_file}.icns"
+      if [[ ! -f "${icon_source}" ]]; then
+        fail "product icon missing: ${icon_source}"
+      fi
+      cp "${icon_source}" "${app}/Contents/Resources/${icon_file}.icns"
+    fi
+
+    patch_product_info_plist "${app}/Contents/Info.plist" "${app_name}" "${executable_name}" "${bundle_id}" "${url_scheme}" "${component}" "${icon_file}"
     resign_app "${app}"
   fi
 
@@ -1023,9 +1051,17 @@ clean_macos_product_outputs() {
     "${OUT_DIR}/${PRODUCT_FAMILY_NAME}.app" \
     "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Text.app" \
     "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Spreadsheet.app" \
+    "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Sheets.app" \
     "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Presentation.app" \
+    "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Keynote.app" \
     "${OUT_DIR}/${PRODUCT_FAMILY_NAME} PDF.app" \
-    "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Visio.app"
+    "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Visio.app" \
+    "${OUT_DIR}/${PRODUCT_FAMILY_NAME} Draw.app" \
+    "${OUT_DIR}/Euro-Office Text.app" \
+    "${OUT_DIR}/Euro-Office Spreadsheet.app" \
+    "${OUT_DIR}/Euro-Office Presentation.app" \
+    "${OUT_DIR}/Euro-Office PDF.app" \
+    "${OUT_DIR}/Euro-Office Visio.app"
 }
 
 stage_macos_apps() {
@@ -1046,7 +1082,7 @@ stage_macos_apps() {
 verify_app() {
   local app="$1"
   local plist="${app}/Contents/Info.plist"
-  local app_name executable_name bundle_id exe log_name
+  local app_name executable_name bundle_id icon_file exe log_name
 
   if [[ ! -d "${app}" ]]; then
     fail "app bundle missing: ${app}"
@@ -1055,8 +1091,13 @@ verify_app() {
   app_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "${plist}")"
   executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${plist}")"
   bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${plist}")"
+  icon_file="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "${plist}" 2>/dev/null || true)"
   exe="${app}/Contents/MacOS/${executable_name}"
   log_name="${app_name// /-}"
+
+  if [[ -n "${icon_file}" && ! -f "${app}/Contents/Resources/${icon_file}.icns" ]]; then
+    fail "app icon missing for ${app_name}: ${icon_file}.icns"
+  fi
 
   if [[ ! -x "${exe}" ]]; then
     local candidate
