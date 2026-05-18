@@ -154,3 +154,19 @@ target "desktop-export" {
 
   cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-builder"]  # reuses builder cache
 }
+
+target "packages" {
+  inherits   = ["_common"]
+  context    = ".."
+  dockerfile = "./build/.docker/packages.bake.Dockerfile"
+  target     = "packages"       # points to the FROM scratch stage
+  tags       = ["${REGISTRY}/packages:${TAG}"]
+  contexts = {
+    desktop-export          = "target:desktop-export"
+  }
+
+  # Export the filesystem directly to a local directory instead of an image
+  output = ["type=local,dest=./deploy/packages"]
+
+  cache-from = ["type=local,src=/tmp/${REGISTRY}/packages"]  # reuses builder cache
+}
