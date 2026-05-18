@@ -18,6 +18,9 @@ FROM desktop-builder AS desktop-composer
     COPY desktop-apps/common/loginpage/providers /desktopeditors/providers
     COPY desktop-apps/common/templates /desktopeditors/converter/templates
 
+    COPY desktop-sdk/ChromiumBasedEditors/resources/ /desktopeditors/editors/sdkjs/common/Images/
+    RUN mkdir /desktopeditors/editors/sdkjs-plugins
+
     COPY build/configs/core/DoctRenderer.config.desktop /desktopeditors/converter/DoctRenderer.config
     
     COPY document-templates/new /desktopeditors/converter/empty
