@@ -15,7 +15,8 @@ FROM desktop-builder AS desktop-composer
     COPY web-apps/apps/api/documents/index.html.desktop /desktopeditors/editors/web-apps/apps/api/documents/index.html
     
     COPY desktop-apps/common/converter/* /desktopeditors/converter/
-    COPY desktop-apps/common/loginpage/providers /desktopeditors/providers
+    # Support only Nextcloud for now
+    COPY desktop-apps/common/loginpage/providers/nextcloud /desktopeditors/providers/nextcloud
     COPY desktop-apps/common/templates /desktopeditors/converter/templates
 
     COPY desktop-sdk/ChromiumBasedEditors/resources/ /desktopeditors/editors/sdkjs/common/Images/
