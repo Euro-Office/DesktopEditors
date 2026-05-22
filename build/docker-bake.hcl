@@ -12,6 +12,11 @@ variable "PRODUCT_VERSION" {
   default = "9.3.1"
 }
 
+variable "BUILD_NUMBER" {
+  default = "0"
+}
+
+
 variable "BUILD_ROOT" {
   default = "/package"
 }
@@ -67,6 +72,7 @@ group "deps" {
 target "_common" {
   args = {
     PRODUCT_VERSION     = "${PRODUCT_VERSION}"
+    BUILD_NUMBER        = "${BUILD_NUMBER}"
     BUILD_ROOT          = "${BUILD_ROOT}"
     NUGET_CACHE         = "${NUGET_CACHE}"
     CACHE_BUST          = "${CACHE_BUST}"
