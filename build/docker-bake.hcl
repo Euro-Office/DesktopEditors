@@ -38,7 +38,7 @@ variable "CACHE_BUST" {
 }
 
 variable "BRANDING_DIR" {
-  default = "build/brands/default"
+  default = "."
 }
 
 variable "COMPANY_NAME" {
