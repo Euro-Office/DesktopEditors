@@ -11,13 +11,19 @@
 
 FROM ubuntu:24.04 AS package
 
+    ARG COMPANY_NAME
+    ARG COMPANY_NAME_LOW
+    ARG PRODUCT_NAME
+    ARG BRANDING_DIR
     ARG PRODUCT_VERSION
     ARG BUILD_NUMBER=0
     ARG OUT_BASE="/build/package/out"
     ARG BUNDLE_BASE="/build/bundle"
-    ARG OUT_DIR="${BUNDLE_BASE}/euro-office/desktopeditors"
+    ARG OUT_DIR="${BUNDLE_BASE}/${COMPANY_NAME_LOW}/desktopeditors"
 
     ENV PRODUCT_VERSION=${PRODUCT_VERSION}
+    ENV COMPANY_NAME=${COMPANY_NAME}
+    ENV PRODUCT_NAME=${PRODUCT_NAME}
     ENV BUILD_NUMBER=${BUILD_NUMBER}
     ENV OUT_BASE=${OUT_BASE}
     ENV BUNDLE_BASE=${BUNDLE_BASE}
@@ -38,11 +44,16 @@ FROM ubuntu:24.04 AS package
     # Upstream packaging repo
     COPY desktop-apps/package/ /desktop-editors-package/
 
+    ### Branding
+    COPY ${BRANDING_DIR}/desktop-apps/package/ /desktop-editors-package/
+    ###
+
     RUN cd desktop-editors-package && \
         mkdir -p ${OUT_BASE} && \
         ln -s ${BUNDLE_BASE} ${OUT_BASE}/linux_64  && \
         ln -s ${BUNDLE_BASE} ${OUT_BASE}/linux_arm64 && \
         make deb rpm tar \
+            BRANDING_DIR="." \
             BUILD_OUTPUT_DIR="${OUT_BASE}" \
             PRODUCT_VERSION="${PRODUCT_VERSION}" \
             PACKAGE_EDITION=opensource \

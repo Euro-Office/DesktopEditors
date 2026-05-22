@@ -36,8 +36,16 @@ variable "BRANDING_DIR" {
   default = "build/brands/default"
 }
 
-variable "ABOUT_PAGE_APP_NAME" {
-  default = ""
+variable "COMPANY_NAME" {
+  default = "Euro-Office"
+}
+
+variable "COMPANY_NAME_LOW" {
+  default = regex_replace(lower(COMPANY_NAME), "\\s+", "-")
+}
+
+variable "PRODUCT_NAME" {
+  default = "Desktop Editors"
 }
 
 # ──────────────────────────────────────────────
@@ -63,7 +71,9 @@ target "_common" {
     NUGET_CACHE         = "${NUGET_CACHE}"
     CACHE_BUST          = "${CACHE_BUST}"
     BRANDING_DIR        = "${BRANDING_DIR}"
-    ABOUT_PAGE_APP_NAME = "${ABOUT_PAGE_APP_NAME}"
+    PRODUCT_NAME        = "${PRODUCT_NAME}"
+    COMPANY_NAME        = "${COMPANY_NAME}"
+    COMPANY_NAME_LOW    = "${COMPANY_NAME_LOW}"
   }
 }
 
