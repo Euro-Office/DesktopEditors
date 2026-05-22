@@ -32,6 +32,14 @@ variable "CACHE_BUST" {
   default = "1"
 }
 
+variable "BRANDING_DIR" {
+  default = "build/brands/default"
+}
+
+variable "ABOUT_PAGE_APP_NAME" {
+  default = ""
+}
+
 # ──────────────────────────────────────────────
 # BUILD GROUPS
 # ──────────────────────────────────────────────
@@ -50,10 +58,12 @@ group "deps" {
 
 target "_common" {
   args = {
-    PRODUCT_VERSION = "${PRODUCT_VERSION}"
-    BUILD_ROOT      = "${BUILD_ROOT}"
-    NUGET_CACHE     = "${NUGET_CACHE}"
-    CACHE_BUST      = "${CACHE_BUST}"
+    PRODUCT_VERSION     = "${PRODUCT_VERSION}"
+    BUILD_ROOT          = "${BUILD_ROOT}"
+    NUGET_CACHE         = "${NUGET_CACHE}"
+    CACHE_BUST          = "${CACHE_BUST}"
+    BRANDING_DIR        = "${BRANDING_DIR}"
+    ABOUT_PAGE_APP_NAME = "${ABOUT_PAGE_APP_NAME}"
   }
 }
 
