@@ -1,0 +1,12 @@
+diff --git a/OdfFile/Reader/Converter/pptx_table_context.cpp b/OdfFile/Reader/Converter/pptx_table_context.cpp
+--- a/OdfFile/Reader/Converter/pptx_table_context.cpp
++++ b/OdfFile/Reader/Converter/pptx_table_context.cpp
+@@ -316 +316 @@ void process_border(pptx_border_edge & borderEdge, _CP_OPT(odf_types::border_sty
+-		borderEdge.width = boost::lexical_cast<int>(borderStyle->get_length().get_value_unit(odf_types::length::emu));
++		borderEdge.width = static_cast<int>(borderStyle->get_length().get_value_unit(odf_types::length::emu));
+diff --git a/OdfFile/Reader/Converter/xlsx_borders.cpp b/OdfFile/Reader/Converter/xlsx_borders.cpp
+--- a/OdfFile/Reader/Converter/xlsx_borders.cpp
++++ b/OdfFile/Reader/Converter/xlsx_borders.cpp
+@@ -110 +110 @@ void process_border(xlsx_border_edge & borderEdge, const _CP_OPT(border_style) &
+-		borderEdge.width = boost::lexical_cast<int>(borderStyle->get_length().get_value_unit(odf_types::length::emu));
++		borderEdge.width = static_cast<int>(borderStyle->get_length().get_value_unit(odf_types::length::emu));

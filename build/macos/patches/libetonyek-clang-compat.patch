@@ -1,0 +1,26 @@
+diff --git a/src/lib/IWORKTable.cpp b/src/lib/IWORKTable.cpp
+--- a/src/lib/IWORKTable.cpp
++++ b/src/lib/IWORKTable.cpp
+@@ -829,2 +829,2 @@ void IWORKTable::draw(const librevenge::RVNGPropertyList &tableProps, IWORKOutpu
+-      cellProps.insert("librevenge:column", numeric_cast<int>(col));
+-      cellProps.insert("librevenge:row", numeric_cast<int>(r));
++      cellProps.insert("librevenge:column", static_cast<int>(col));
++      cellProps.insert("librevenge:row", static_cast<int>(r));
+@@ -833 +833 @@ void IWORKTable::draw(const librevenge::RVNGPropertyList &tableProps, IWORKOutpu
+-        cellProps.insert("table:number-columns-repeated", numeric_cast<int>(numRepeat));
++        cellProps.insert("table:number-columns-repeated", static_cast<int>(numRepeat));
+@@ -864 +864 @@ void IWORKTable::draw(const librevenge::RVNGPropertyList &tableProps, IWORKOutpu
+-          cellProps.insert("table:number-columns-spanned", numeric_cast<int>(cell.m_columnSpan));
++          cellProps.insert("table:number-columns-spanned", static_cast<int>(cell.m_columnSpan));
+@@ -866 +866 @@ void IWORKTable::draw(const librevenge::RVNGPropertyList &tableProps, IWORKOutpu
+-          cellProps.insert("table:number-rows-spanned", numeric_cast<int>(cell.m_rowSpan));
++          cellProps.insert("table:number-rows-spanned", static_cast<int>(cell.m_rowSpan));
+diff --git a/src/lib/contexts/IWORKPathElement.cpp b/src/lib/contexts/IWORKPathElement.cpp
+--- a/src/lib/contexts/IWORKPathElement.cpp
++++ b/src/lib/contexts/IWORKPathElement.cpp
+@@ -171 +171 @@ void PointPathElement::endOfElement()
+-        getCollector().collectStarPath(size, numeric_cast<unsigned>(get(m_point).m_x), get(m_point).m_y);
++        getCollector().collectStarPath(size, static_cast<unsigned>(get(m_point).m_x), get(m_point).m_y);
+@@ -264 +264 @@ void ScalarPathElement::endOfElement()
+-      getCollector().collectPolygonPath(size, numeric_cast<unsigned>(m_value));
++      getCollector().collectPolygonPath(size, static_cast<unsigned>(m_value));

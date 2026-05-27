@@ -1,0 +1,39 @@
+name: macOS Build Script Check
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/macos-build-check.yml'
+      - 'README.md'
+      - 'build/README.md'
+      - 'build/macos/**'
+  push:
+    paths:
+      - '.github/workflows/macos-build-check.yml'
+      - 'README.md'
+      - 'build/README.md'
+      - 'build/macos/**'
+
+jobs:
+  macos-build-script:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        run: |
+          brew list qt@5 >/dev/null 2>&1 || brew install qt@5 || brew install qt
+
+      - name: Check shell syntax
+        run: bash -n build/macos/build.sh
+
+      - name: Run macOS preflight
+        run: |
+          export EO_SKIP_SPACE_CHECK=1
+          ./build/macos/build.sh --check
+
+      - name: Run dry-run build plan
+        run: |
+          export EO_SKIP_SPACE_CHECK=1
+          ./build/macos/build.sh --dry-run arm64
