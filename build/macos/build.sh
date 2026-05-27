@@ -5,13 +5,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${BUILD_DIR}/.." && pwd)"
 
-PRODUCT_FAMILY_NAME="${PRODUCT_FAMILY_NAME:-AUTARQ}"
-PRODUCT_NAME="${PRODUCT_NAME:-${PRODUCT_FAMILY_NAME} Office}"
-BUNDLE_ID="${PRODUCT_BUNDLE_IDENTIFIER:-com.autarq.office}"
-MACOS_PRODUCTS="${EO_MACOS_PRODUCTS:-split}"
+read_build_tools_rev() {
+  local rev_file="$1"
+  if [[ ! -f "${rev_file}" ]]; then
+    printf '[macos] error: build tools revision file not found: %s\n' "${rev_file}" >&2
+    exit 1
+  fi
+  tr -d '[:space:]' < "${rev_file}"
+}
+
+PRODUCT_FAMILY_NAME="${PRODUCT_FAMILY_NAME:-Euro-Office}"
+PRODUCT_NAME="${PRODUCT_NAME:-${PRODUCT_FAMILY_NAME}}"
+BUNDLE_ID="${PRODUCT_BUNDLE_IDENTIFIER:-org.euro-office.desktopeditors}"
+MACOS_PRODUCTS="${EO_MACOS_PRODUCTS:-suite}"
 SCHEME="${SCHEME:-ONLYOFFICE-arm}"
+DRY_RUN=0
+if [[ "${1:-}" == "--dry-run" ]]; then
+  DRY_RUN=1
+  shift
+fi
 ARCH="${1:-}"
-BUILD_TOOLS_REV="${BUILD_TOOLS_REV:-c5f6c2e02b50dfcc5c53a207f9a6cde84896de91}"
+BUILD_TOOLS_REV_FILE="${BUILD_TOOLS_REV_FILE:-${SCRIPT_DIR}/build_tools.sha}"
+BUILD_TOOLS_REV="${BUILD_TOOLS_REV:-$(read_build_tools_rev "${BUILD_TOOLS_REV_FILE}")}"
 BUILD_TOOLS_PLATFORM="${BUILD_TOOLS_PLATFORM:-mac_arm64}"
 MIN_FREE_GIB="${MIN_FREE_GIB:-150}"
 QT_DIR="${QT_DIR:-${REPO_ROOT}/_qt}"
@@ -21,9 +36,11 @@ LOG_DIR="${BUILD_DIR}/deploy/macos/logs"
 DERIVED_DATA_DIR="${BUILD_DIR}/deploy/macos/DerivedData/arm64"
 TOOLS_BIN_DIR="${BUILD_DIR}/deploy/macos/tools/bin"
 CMAKE_VENV_DIR="${BUILD_DIR}/deploy/macos/tools/cmake-venv"
+PATCH_CLEANUP_FILE="${BUILD_DIR}/deploy/macos/tools/applied-patches.$$"
 BUILD_TOOLS_DIR="${REPO_ROOT}/build_tools"
 DESKTOP_APPS_DIR="${DESKTOP_APPS_DIR:-${REPO_ROOT}/desktop-apps}"
 XCODE_PROJECT="${DESKTOP_APPS_DIR}/macos/ONLYOFFICE.xcodeproj"
+PATCH_DIR="${SCRIPT_DIR}/patches"
 
 PREFLIGHT_FAILURES=0
 EXTERNAL_DESKTOP_APPS_LINK=""
@@ -46,20 +63,45 @@ cleanup_external_desktop_apps_link() {
   fi
 }
 
-trap cleanup_external_desktop_apps_link EXIT
+cleanup_applied_patches() {
+  local record patch_root patch_file
+  if [[ ! -f "${PATCH_CLEANUP_FILE}" ]]; then
+    return
+  fi
+
+  while IFS= read -r record; do
+    [[ -z "${record}" ]] && continue
+    patch_root="${record%%|*}"
+    patch_file="${record#*|}"
+    if git -C "${patch_root}" apply --unidiff-zero --reverse --check "${patch_file}" >/dev/null 2>&1; then
+      git -C "${patch_root}" apply --unidiff-zero --reverse "${patch_file}" || true
+    fi
+  done < "${PATCH_CLEANUP_FILE}"
+  rm -f "${PATCH_CLEANUP_FILE}"
+}
+
+cleanup() {
+  cleanup_applied_patches
+  cleanup_external_desktop_apps_link
+}
+
+trap cleanup EXIT
 
 usage() {
   cat <<EOF
 Usage:
   ./macos/build.sh --check
+  ./macos/build.sh --dry-run arm64
   ./macos/build.sh arm64
 
 Environment:
   MIN_FREE_GIB=150
   EO_SKIP_SPACE_CHECK=1
   QT_DIR=/path/to/qt-root
+  BUILD_TOOLS_REV_FILE=${BUILD_TOOLS_REV_FILE}
   BUILD_TOOLS_REV=${BUILD_TOOLS_REV}
-  EO_MACOS_PRODUCTS=split|suite|text,spreadsheet,presentation,pdf,visio
+  EO_MACOS_PRODUCTS=suite
+  EO_ALLOW_GIT_HTTPS_FALLBACK=1
   CODESIGNING_IDENTITY="Developer ID Application: ..."
   DEVELOPMENT_TEAM=<team-id>
   EO_SKIP_LAUNCH=1
@@ -308,6 +350,101 @@ preflight() {
   fi
 }
 
+dry_run_existing_target() {
+  local path="$1"
+
+  if [[ -e "${path}" || -L "${path}" ]]; then
+    resolved_path "${path}"
+  else
+    printf 'absent'
+  fi
+}
+
+dry_run_sibling_link() {
+  local name="$1"
+  local target_dir="$2"
+  local parent_dir="$3"
+  local link_path="${parent_dir}/${name}"
+  local current_target
+
+  current_target="$(dry_run_existing_target "${link_path}")"
+  info "dry-run: Xcode sibling ${name}: ${link_path} -> ${target_dir} (current: ${current_target})"
+}
+
+dry_run() {
+  OUT_DIR="${BUILD_DIR}/deploy/macos/${ARCH}"
+  DERIVED_DATA_DIR="${BUILD_DIR}/deploy/macos/DerivedData/${ARCH}"
+
+  if [[ "${ARCH}" != "arm64" ]]; then
+    fail "--dry-run currently supports arm64 only"
+  fi
+
+  local products
+  products="$(selected_products | paste -sd, -)"
+
+  info "dry-run: no submodules, symlinks, patches, build outputs, or git config will be changed"
+  info "dry-run: product output: ${OUT_DIR}/${PRODUCT_NAME}.app"
+  info "dry-run: bundle identifier: ${BUNDLE_ID}"
+  info "dry-run: products: ${products}"
+  info "dry-run: build_tools revision file: ${BUILD_TOOLS_REV_FILE}"
+  info "dry-run: build_tools revision: ${BUILD_TOOLS_REV}"
+  info "dry-run: Xcode project: ${XCODE_PROJECT}"
+  info "dry-run: DerivedData: ${DERIVED_DATA_DIR}"
+  info "dry-run: compatibility patches: ${PATCH_DIR}"
+
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    warn "dry-run: macOS build must run on Darwin; current host is $(uname -s)"
+  fi
+
+  if [[ "$(uname -m)" != "arm64" ]]; then
+    warn "dry-run: arm64 build requested on $(uname -m); the real build will fail on this host"
+  fi
+
+  if [[ "${EO_ALLOW_GIT_HTTPS_FALLBACK:-0}" == "1" ]]; then
+    info "dry-run: would opt in to local git@github.com: -> https://github.com/ rewrite if none exists"
+  else
+    info "dry-run: would leave git@github.com: submodule URLs unchanged"
+  fi
+
+  local default_desktop_apps_dir="${REPO_ROOT}/desktop-apps"
+  local absolute_desktop_apps_dir
+  absolute_desktop_apps_dir="$(absolute_path "${DESKTOP_APPS_DIR}")"
+
+  if [[ "${absolute_desktop_apps_dir}" == "${default_desktop_apps_dir}" ]]; then
+    info "dry-run: would use desktop-apps submodule in place: ${default_desktop_apps_dir}"
+  else
+    local resolved_default resolved_external desktop_apps_parent
+    resolved_default="$(dry_run_existing_target "${default_desktop_apps_dir}")"
+    if [[ -e "${DESKTOP_APPS_DIR}" || -L "${DESKTOP_APPS_DIR}" ]]; then
+      resolved_external="$(resolved_path "${DESKTOP_APPS_DIR}")"
+    else
+      resolved_external="missing"
+    fi
+    desktop_apps_parent="$(cd "$(dirname "${DESKTOP_APPS_DIR}")" && pwd)"
+
+    info "dry-run: external desktop-apps checkout: ${DESKTOP_APPS_DIR} (resolved: ${resolved_external})"
+    info "dry-run: build_tools desktop-apps link: ${default_desktop_apps_dir} -> ${DESKTOP_APPS_DIR} (current: ${resolved_default})"
+    dry_run_sibling_link build_tools "${BUILD_TOOLS_DIR}" "${desktop_apps_parent}"
+    dry_run_sibling_link core "${REPO_ROOT}/core" "${desktop_apps_parent}"
+    dry_run_sibling_link desktop-sdk "${REPO_ROOT}/desktop-sdk" "${desktop_apps_parent}"
+    dry_run_sibling_link dictionaries "${REPO_ROOT}/dictionaries" "${desktop_apps_parent}"
+  fi
+
+  if has_versioned_qt_layout "${QT_DIR}"; then
+    info "dry-run: would use Qt layout at ${QT_DIR}"
+  else
+    local homebrew_qt
+    homebrew_qt="$(discover_homebrew_qt || true)"
+    if [[ -n "${homebrew_qt}" ]]; then
+      info "dry-run: would create build_tools Qt layout under ${QT_DIR} from ${homebrew_qt}"
+    else
+      warn "dry-run: Qt was not found; the real build needs QT_DIR or a Homebrew Qt install"
+    fi
+  fi
+
+  info "dry-run: would update submodules, checkout build_tools, apply reviewed patches, build native payload, run xcodebuild, stage ${PRODUCT_NAME}.app, verify codesign and launch"
+}
+
 ensure_arm64_host() {
   if [[ "$(uname -m)" != "arm64" ]]; then
     fail "arm64 build requested on non-arm64 host ($(uname -m)); universal/x86_64 support is not wired yet"
@@ -350,6 +487,9 @@ ensure_external_repo_sibling_for_xcode() {
     resolved_link_path="$(resolved_path "${link_path}")"
     if [[ "${resolved_link_path}" != "${resolved_target_dir}" ]]; then
       fail "${link_path} already resolves to ${resolved_link_path}, expected ${resolved_target_dir}"
+    fi
+    if [[ -L "${link_path}" ]]; then
+      info "using existing ${name} symlink: ${link_path}"
     fi
     return
   fi
@@ -399,6 +539,7 @@ ensure_external_desktop_apps_for_build_tools() {
     if [[ "${linked_target}" != "${resolved_desktop_apps_dir}" ]]; then
       fail "${default_desktop_apps_dir} already points to ${linked_target}, expected ${resolved_desktop_apps_dir}"
     fi
+    info "using existing desktop-apps symlink: ${default_desktop_apps_dir}"
     return
   fi
 
@@ -416,7 +557,14 @@ ensure_external_desktop_apps_for_build_tools() {
 
 ensure_submodules() {
   info "syncing submodules"
-  git -C "${REPO_ROOT}" config --local url.https://github.com/.insteadOf git@github.com:
+  if git -C "${REPO_ROOT}" config --local --get-regexp '^url\..*\.insteadOf$' 2>/dev/null | grep -q 'git@github.com:'; then
+    info "using existing local git URL rewrite for git@github.com:"
+  elif [[ "${EO_ALLOW_GIT_HTTPS_FALLBACK:-0}" == "1" ]]; then
+    git -C "${REPO_ROOT}" config --local url.https://github.com/.insteadOf git@github.com:
+    info "enabled opt-in HTTPS fallback for git@github.com: submodule URLs"
+  else
+    info "leaving git@github.com: submodule URLs unchanged; set EO_ALLOW_GIT_HTTPS_FALLBACK=1 to rewrite them to HTTPS"
+  fi
   git -C "${REPO_ROOT}" submodule sync --recursive
 
   local default_desktop_apps_dir="${REPO_ROOT}/desktop-apps"
@@ -501,8 +649,15 @@ exit 127
 EOF
   chmod +x "${TOOLS_BIN_DIR}/grunt"
   prepend_path_var PATH "${TOOLS_BIN_DIR}"
+
+  # build_tools sets NODE_ENV=production before npm install. npm 10 honors that
+  # by omitting dev dependencies, but the Grunt build files need local dev
+  # helpers such as time-grunt. Clear both env spellings and explicitly include
+  # dev dependencies so the behavior is stable across npm releases. The
+  # production flag keeps older npm releases on the same path.
   unset NPM_CONFIG_OMIT npm_config_omit
   export NPM_CONFIG_INCLUDE=dev
+  export NPM_CONFIG_PRODUCTION=false
 
   prepend_path_var CPATH "${katana_include}"
   prepend_path_var CPATH "${gumbo_include}"
@@ -544,30 +699,39 @@ reset_incomplete_boost_build() {
   rm -rf "${boost_build_dir}"
 }
 
-patch_boost_datetime_header() {
-  local source="$1"
+apply_reviewed_patch() {
+  local patch_root="$1"
+  local patch_file="$2"
+  local description="$3"
 
-  if [[ ! -f "${source}" ]]; then
+  if [[ ! -f "${patch_file}" ]]; then
+    fail "compatibility patch missing: ${patch_file}"
+  fi
+  if [[ ! -d "${patch_root}" ]]; then
+    fail "patch root missing for ${description}: ${patch_root}"
+  fi
+
+  if git -C "${patch_root}" apply --unidiff-zero --check "${patch_file}" >/dev/null 2>&1; then
+    git -C "${patch_root}" apply --unidiff-zero "${patch_file}"
+    mkdir -p "$(dirname "${PATCH_CLEANUP_FILE}")"
+    printf '%s|%s\n' "${patch_root}" "${patch_file}" >> "${PATCH_CLEANUP_FILE}"
+    info "applied reviewed compatibility patch: ${description}"
     return
   fi
 
-  if ! grep -q 'numeric_cast<.*_type>' "${source}"; then
+  if git -C "${patch_root}" apply --unidiff-zero --reverse --check "${patch_file}" >/dev/null 2>&1; then
+    info "reviewed compatibility patch already present: ${description}"
     return
   fi
 
-  perl -0pi -e '
-    s/numeric_cast<hour_type>\(h\)/static_cast<hour_type>(h)/g;
-    s/numeric_cast<min_type>\(m\)/static_cast<min_type>(m)/g;
-    s/numeric_cast<sec_type>\(s\)/static_cast<sec_type>(s)/g;
-  ' "${source}"
-  info "patched Boost.DateTime numeric casts for current Clang/Boost compatibility: ${source}"
+  fail "could not apply reviewed compatibility patch: ${description}"
 }
 
 prepare_boost_sources() {
   local boost_dir="${REPO_ROOT}/core/Common/3dParty/boost"
   local boost_src="${boost_dir}/boost_1_72_0"
-  local source_header="${boost_src}/libs/date_time/include/boost/date_time/posix_time/posix_time_duration.hpp"
-  local installed_header="${boost_dir}/build/${BUILD_TOOLS_PLATFORM}/include/boost/date_time/posix_time/posix_time_duration.hpp"
+  local date_time_src="${boost_src}/libs/date_time"
+  local installed_include="${boost_dir}/build/${BUILD_TOOLS_PLATFORM}/include"
 
   printf '%s' 'boost_version_5' > "${boost_dir}/boost.data"
 
@@ -577,8 +741,17 @@ prepare_boost_sources() {
       https://github.com/boostorg/boost.git boost_1_72_0 -b boost-1.72.0
   fi
 
-  patch_boost_datetime_header "${source_header}"
-  patch_boost_datetime_header "${installed_header}"
+  apply_reviewed_patch \
+    "${date_time_src}" \
+    "${PATCH_DIR}/boost-date-time-duration.patch" \
+    "Boost.DateTime source numeric casts"
+
+  if [[ -f "${installed_include}/boost/date_time/posix_time/posix_time_duration.hpp" ]]; then
+    apply_reviewed_patch \
+      "${installed_include}" \
+      "${PATCH_DIR}/boost-date-time-duration-installed.patch" \
+      "Boost.DateTime installed header numeric casts"
+  fi
 }
 
 iwork_module_version() {
@@ -587,9 +760,9 @@ iwork_module_version() {
 }
 
 patch_libetonyek_clang_compat() {
-  local table_source="${REPO_ROOT}/core/Common/3dParty/apple/libetonyek/src/lib/IWORKTable.cpp"
-  local path_source="${REPO_ROOT}/core/Common/3dParty/apple/libetonyek/src/lib/contexts/IWORKPathElement.cpp"
-  local patched=0
+  local libetonyek_dir="${REPO_ROOT}/core/Common/3dParty/apple/libetonyek"
+  local table_source="${libetonyek_dir}/src/lib/IWORKTable.cpp"
+  local path_source="${libetonyek_dir}/src/lib/contexts/IWORKPathElement.cpp"
 
   if [[ ! -f "${table_source}" ]]; then
     fail "expected libetonyek source was not fetched: ${table_source}"
@@ -599,43 +772,17 @@ patch_libetonyek_clang_compat() {
     fail "expected libetonyek source was not fetched: ${path_source}"
   fi
 
-  if grep -q 'numeric_cast<int>(' "${table_source}"; then
-    perl -0pi -e 's/numeric_cast<int>\((col|r|numRepeat|cell\.m_columnSpan|cell\.m_rowSpan)\)/static_cast<int>($1)/g' "${table_source}"
-    patched=1
-  fi
-
-  if grep -q 'numeric_cast<unsigned>(' "${path_source}"; then
-    perl -0pi -e 's/numeric_cast<unsigned>\(get\(m_point\)\.m_x\)/static_cast<unsigned>(get(m_point).m_x)/g; s/numeric_cast<unsigned>\(m_value\)/static_cast<unsigned>(m_value)/g' "${path_source}"
-    patched=1
-  fi
-
-  if [[ "${patched}" -eq 1 ]]; then
-    info "patched libetonyek numeric casts for current Clang/Boost compatibility"
-  fi
+  apply_reviewed_patch \
+    "${libetonyek_dir}" \
+    "${PATCH_DIR}/libetonyek-clang-compat.patch" \
+    "libetonyek numeric casts"
 }
 
 patch_odf_clang_compat() {
-  local sources=(
-    "${REPO_ROOT}/core/OdfFile/Reader/Converter/pptx_table_context.cpp"
-    "${REPO_ROOT}/core/OdfFile/Reader/Converter/xlsx_borders.cpp"
-  )
-  local source
-  local patched=0
-
-  for source in "${sources[@]}"; do
-    if [[ ! -f "${source}" ]]; then
-      fail "expected ODF converter source was not found: ${source}"
-    fi
-
-    if grep -q 'boost::lexical_cast<int>(borderStyle->get_length().get_value_unit(odf_types::length::emu))' "${source}"; then
-      perl -0pi -e 's/boost::lexical_cast<int>\(borderStyle->get_length\(\)\.get_value_unit\(odf_types::length::emu\)\)/static_cast<int>(borderStyle->get_length().get_value_unit(odf_types::length::emu))/g' "${source}"
-      patched=1
-    fi
-  done
-
-  if [[ "${patched}" -eq 1 ]]; then
-    info "patched ODF table border width casts for current Clang/Boost compatibility"
-  fi
+  apply_reviewed_patch \
+    "${REPO_ROOT}/core" \
+    "${PATCH_DIR}/odf-border-width-clang-compat.patch" \
+    "ODF table border width casts"
 }
 
 prepare_iwork_sources() {
@@ -787,7 +934,7 @@ ensure_draw_empty_template() {
   fi
 
   mkdir -p "${converter_dir}/empty"
-  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/autarq-vsdx.XXXXXX")"
+  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/euro-office-vsdx.XXXXXX")"
   printf 'VSDY;v10;0;' > "${tmp_dir}/empty.vsdt"
 
   if ! "${x2t}" "${tmp_dir}/empty.vsdt" "${template}"; then
@@ -822,17 +969,11 @@ entitlements_file() {
 
 selected_products() {
   case "${MACOS_PRODUCTS}" in
-    split)
-      printf '%s\n' text spreadsheet presentation pdf visio
-      ;;
     suite)
       printf '%s\n' suite
       ;;
-    all)
-      printf '%s\n' suite text spreadsheet presentation pdf visio
-      ;;
     *)
-      printf '%s\n' "${MACOS_PRODUCTS//,/ }" | xargs -n1
+      fail "this Euro-Office branch exports only the suite app; set EO_MACOS_PRODUCTS=suite or use the AUTARQ branding branch for split app builds"
       ;;
   esac
 }
@@ -851,11 +992,11 @@ product_app_name() {
 
 product_executable_name() {
   case "$1" in
-    text) printf 'AUTARQWrite\n' ;;
-    spreadsheet) printf 'AUTARQSheets\n' ;;
-    presentation) printf 'AUTARQKeynote\n' ;;
-    pdf) printf 'AUTARQPDF\n' ;;
-    visio) printf 'AUTARQDraw\n' ;;
+    text) printf '%sWrite\n' "${PRODUCT_FAMILY_NAME//[^[:alnum:]]/}" ;;
+    spreadsheet) printf '%sSheets\n' "${PRODUCT_FAMILY_NAME//[^[:alnum:]]/}" ;;
+    presentation) printf '%sPresentation\n' "${PRODUCT_FAMILY_NAME//[^[:alnum:]]/}" ;;
+    pdf) printf '%sPDF\n' "${PRODUCT_FAMILY_NAME//[^[:alnum:]]/}" ;;
+    visio) printf '%sDraw\n' "${PRODUCT_FAMILY_NAME//[^[:alnum:]]/}" ;;
     suite) printf '%s\n' "${PRODUCT_NAME}" ;;
     *) fail "unknown macOS product component: $1" ;;
   esac
@@ -875,23 +1016,23 @@ product_bundle_id() {
 
 product_url_scheme() {
   case "$1" in
-    text) printf 'autarq-write\n' ;;
-    spreadsheet) printf 'autarq-sheets\n' ;;
-    presentation) printf 'autarq-keynote\n' ;;
-    pdf) printf 'autarq-pdf\n' ;;
-    visio) printf 'autarq-draw\n' ;;
-    suite) printf 'autarq-office\n' ;;
+    text) printf 'euro-office-write\n' ;;
+    spreadsheet) printf 'euro-office-sheets\n' ;;
+    presentation) printf 'euro-office-presentation\n' ;;
+    pdf) printf 'euro-office-pdf\n' ;;
+    visio) printf 'euro-office-draw\n' ;;
+    suite) printf 'euro-office\n' ;;
     *) fail "unknown macOS product component: $1" ;;
   esac
 }
 
 product_icon_file() {
   case "$1" in
-    text) printf 'autarq-write\n' ;;
-    spreadsheet) printf 'autarq-sheets\n' ;;
-    presentation) printf 'autarq-keynote\n' ;;
-    pdf) printf 'autarq-pdf\n' ;;
-    visio) printf 'autarq-draw\n' ;;
+    text) printf 'euro-office-write\n' ;;
+    spreadsheet) printf 'euro-office-sheets\n' ;;
+    presentation) printf 'euro-office-presentation\n' ;;
+    pdf) printf 'euro-office-pdf\n' ;;
+    visio) printf 'euro-office-draw\n' ;;
     suite) printf '' ;;
     *) fail "unknown macOS product component: $1" ;;
   esac
@@ -1115,6 +1256,22 @@ stage_macos_apps() {
   done < <(selected_products)
 }
 
+wait_for_app_process() {
+  local executable_path="$1"
+  local app_name="$2"
+  local attempt
+
+  for attempt in $(seq 1 30); do
+    if pgrep -f "${executable_path}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  warn "launch smoke test timed out waiting for ${app_name} after 30 seconds"
+  return 1
+}
+
 verify_app() {
   local app="$1"
   local plist="${app}/Contents/Info.plist"
@@ -1164,8 +1321,7 @@ verify_app() {
 
   info "running launch smoke test for ${app_name}"
   open -n "${app}"
-  sleep 4
-  if ! pgrep -f "${app}/Contents/MacOS/${executable_name}" >/dev/null 2>&1; then
+  if ! wait_for_app_process "${app}/Contents/MacOS/${executable_name}" "${app_name}"; then
     fail "launch smoke test did not find a running ${app_name} process"
   fi
   osascript -e "tell application id \"${bundle_id}\" to quit" >/dev/null 2>&1 || true
@@ -1196,6 +1352,10 @@ main() {
     arm64)
       OUT_DIR="${BUILD_DIR}/deploy/macos/${ARCH}"
       DERIVED_DATA_DIR="${BUILD_DIR}/deploy/macos/DerivedData/${ARCH}"
+      if [[ "${DRY_RUN}" == "1" ]]; then
+        dry_run
+        return
+      fi
       preflight
       ensure_arm64_host
       ensure_submodules

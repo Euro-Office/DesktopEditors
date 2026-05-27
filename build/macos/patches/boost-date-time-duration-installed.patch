@@ -1,0 +1,12 @@
+diff --git a/boost/date_time/posix_time/posix_time_duration.hpp b/boost/date_time/posix_time/posix_time_duration.hpp
+--- a/boost/date_time/posix_time/posix_time_duration.hpp
++++ b/boost/date_time/posix_time/posix_time_duration.hpp
+@@ -31 +31 @@ namespace posix_time {
+-      time_duration(numeric_cast<hour_type>(h), 0, 0)
++      time_duration(static_cast<hour_type>(h), 0, 0)
+@@ -45 +45 @@ namespace posix_time {
+-      time_duration(0, numeric_cast<min_type>(m),0)
++      time_duration(0, static_cast<min_type>(m),0)
+@@ -59 +59 @@ namespace posix_time {
+-      time_duration(0,0, numeric_cast<sec_type>(s))
++      time_duration(0,0, static_cast<sec_type>(s))

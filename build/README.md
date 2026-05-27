@@ -11,7 +11,8 @@ Clone the repository with submodules:
 git clone --recurse-submodules https://github.com/Euro-Office/DesktopEditors.git
 ```
 
-If the repository was cloned without submodules, initialize them before building:
+If the repository was cloned without submodules, initialize them before
+building:
 
 ```sh
 git submodule update --init --recursive
@@ -41,23 +42,20 @@ Linux bake file:
 ```sh
 cd DesktopEditors/build
 ./macos/build.sh --check
+./macos/build.sh --dry-run arm64
 ./macos/build.sh arm64
 ```
 
-The default macOS output is five standalone AUTARQ-branded apps:
+The default macOS output is one Euro-Office suite application:
 
 ```text
-DesktopEditors/build/deploy/macos/arm64/AUTARQ Write.app
-DesktopEditors/build/deploy/macos/arm64/AUTARQ Sheets.app
-DesktopEditors/build/deploy/macos/arm64/AUTARQ Keynote.app
-DesktopEditors/build/deploy/macos/arm64/AUTARQ PDF.app
-DesktopEditors/build/deploy/macos/arm64/AUTARQ Draw.app
+DesktopEditors/build/deploy/macos/arm64/Euro-Office.app
 ```
 
 The macOS build currently targets Apple Silicon first. Intel and universal
 builds can be added later using the same `build/macos` layout.
 
-### macOS Requirements
+## macOS Requirements
 
 - macOS on Apple Silicon
 - Xcode command line tools selected with `xcode-select`
@@ -72,86 +70,98 @@ Optional release tooling:
 - Developer ID signing identity for distributable builds
 - notarization credentials for a future signed release flow
 
-### macOS Environment
+## macOS Environment
 
 The script has conservative defaults and can be tuned with environment
 variables:
 
 ```sh
-MIN_FREE_GIB=150                 # minimum free disk space check
-EO_SKIP_SPACE_CHECK=1            # bypass the free-space guard
-QT_DIR=/path/to/qt-root          # contains <version>/macos/bin/qmake or <version>/clang_64/bin/qmake
+MIN_FREE_GIB=150                    # minimum free disk space check
+EO_SKIP_SPACE_CHECK=1               # bypass the free-space guard
+QT_DIR=/path/to/qt-root             # contains <version>/macos/bin/qmake or <version>/clang_64/bin/qmake
 DESKTOP_APPS_DIR=/path/to/desktop-apps
-EO_MACOS_PRODUCTS=split          # split, suite, all, or comma list: text,spreadsheet,presentation,pdf,visio
-BUILD_TOOLS_REV=<commit>         # ONLYOFFICE/build_tools revision
+EO_MACOS_PRODUCTS=suite             # this Euro-Office branch exports one suite app
+BUILD_TOOLS_REV_FILE=build/macos/build_tools.sha
+BUILD_TOOLS_REV=<commit>            # explicit override for ONLYOFFICE/build_tools
+EO_ALLOW_GIT_HTTPS_FALLBACK=1       # opt in to git@github.com: -> https://github.com/ rewrite
 CODESIGNING_IDENTITY="Developer ID Application: ..."
 DEVELOPMENT_TEAM=<team-id>
-EO_SKIP_LAUNCH=1                 # skip the local launch smoke test
+EO_SKIP_LAUNCH=1                    # skip the local launch smoke test
 ```
 
-If `QT_DIR` points at a root directory and Homebrew Qt is available, the script
-creates a build-tools compatible layout such as `<QT_DIR>/5.15.18/macos`.
-
-`DESKTOP_APPS_DIR` is optional. It is useful while the matching `desktop-apps`
-macOS branding branch is still under review; after that branch is merged,
-`DesktopEditors` can point its `desktop-apps` submodule at the upstream commit.
-Upstream `build_tools` still reads `desktop-apps/common/loginpage` from the
-`DesktopEditors` repo root, so the wrapper temporarily links the external
-checkout into that submodule path during the build and restores the empty path
-on exit. Xcode build phases also resolve `../../build_tools`, `../../core`,
-`../../desktop-sdk`, and the dictionaries folder from the `desktop-apps/macos`
-checkout, so the wrapper temporarily links those sibling paths under
-`<desktop-apps-parent>` back to the matching `DesktopEditors` directories while
-using an external checkout.
+`build/macos/build_tools.sha` pins the default `ONLYOFFICE/build_tools`
+revision. Use `BUILD_TOOLS_REV` only for local experiments or while updating
+that pin in a reviewable change.
 
 Without a Developer ID identity the app build is ad-hoc signed and suitable for
 local testing. Release DMG signing and notarization remain gated on Developer ID
 and notarization credentials.
 
+## macOS Dry Run
+
+`./macos/build.sh --dry-run arm64` does not mutate the checkout. It prints the
+suite app output path, pinned `build_tools` revision, Xcode project, Qt layout
+decision, submodule URL behavior, and any temporary symlinks that would be used
+when `DESKTOP_APPS_DIR` points at an external checkout.
+
+This is useful before running the full native build, because upstream
+`build_tools` still expects `desktop-apps/common/loginpage` under the
+`DesktopEditors` root, while Xcode build phases resolve sibling paths such as
+`../../build_tools`, `../../core`, `../../desktop-sdk`, and
+`../../dictionaries` from the `desktop-apps/macos` checkout. The wrapper creates
+those symlinks only for the build and removes them on exit.
+
+The script does not change contributor git URL configuration by default. If a
+local environment cannot fetch `git@github.com:` submodules, set
+`EO_ALLOW_GIT_HTTPS_FALLBACK=1` to opt in to the local HTTPS rewrite.
+
+## macOS Compatibility Patches
+
+Current Xcode/Clang rejects a few older Boost 1.72 numeric conversion paths used
+by the pinned native dependencies. The wrapper applies reviewable patch files
+from `build/macos/patches` with `git apply --unidiff-zero`, records the applied
+patches, and reverts them during normal cleanup:
+
+- `boost-date-time-duration.patch`
+- `boost-date-time-duration-installed.patch`
+- `libetonyek-clang-compat.patch`
+- `odf-border-width-clang-compat.patch`
+
+If the patch is already present, the script detects that with
+`git apply --reverse --check` and continues without dirtying the tree again.
+
+## macOS Local Tooling Notes
+
 Some upstream `build_tools` steps still call `python`. When macOS only provides
-`python3`, `build/macos/build.sh` adds a local `python` shim under
+`python3`, the wrapper adds a local `python` shim under
 `build/deploy/macos/tools/bin` for the duration of the build.
 
 The JavaScript build steps call `grunt` directly after `npm install`. The macOS
 wrapper adds a local `grunt` shim under `build/deploy/macos/tools/bin` that
 executes the `node_modules/.bin/grunt` from the current project directory,
 avoiding any global npm dependency. `build_tools` sets `NODE_ENV=production`
-before those installs, so the wrapper also sets `NPM_CONFIG_INCLUDE=dev`; this
-keeps npm 10+ from omitting Gruntfile helper packages such as `time-grunt`.
+before those installs, so the wrapper sets `NPM_CONFIG_INCLUDE=dev` and
+`NPM_CONFIG_PRODUCTION=false`; this keeps npm from omitting Gruntfile helper
+packages such as `time-grunt`.
 
 The HEIF dependency path in `build_tools` currently requires CMake `>= 3.21`
-and `< 4`. If the host only has CMake 4 or no CMake, the script creates a
-temporary local CMake venv under `build/deploy/macos/tools/cmake-venv`.
+and `< 4`. If the host only has CMake 4 or no CMake, the script creates a local
+CMake venv under `build/deploy/macos/tools/cmake-venv`.
 
-The macOS wrapper also exports fetched `katana-parser/src`, `gumbo-parser/src`,
-`hyphen`, and `hunspell/hunspell/src` include paths for the qmake build, which
-otherwise cannot resolve headers such as `katana.h`, `gumbo.h`,
-`hyphen/hnjalloc.h`, and `hunspell/hunspell.h`.
+If `QT_DIR` points at a root directory and Homebrew Qt is available, the script
+creates a build-tools compatible layout such as `<QT_DIR>/5.15.18/macos`.
 
-If a previous run left an incomplete Boost output under
-`core/Common/3dParty/boost/build/mac_arm64`, the wrapper removes that generated
-directory before calling `build_tools` so `libboost_filesystem.a`,
-`libboost_date_time.a`, and `libboost_regex.a` are rebuilt.
-
-For current Xcode/Clang compatibility with the pinned Boost 1.72 headers, the
-wrapper also patches the local Boost.DateTime `hours`, `minutes`, and `seconds`
-helper constructors that otherwise instantiate Boost numeric conversion paths
-rejected by current Clang.
-
-For current Xcode/Clang compatibility with the pinned Boost 1.72 and iWork
-sources, the wrapper prefetches the generated iWork third-party sources and
-patches a small set of `libetonyek` `numeric_cast<int>` and
-`numeric_cast<unsigned>` calls that otherwise trip Boost MPL enum constant
-evaluation.
-
-The same compatibility pass patches the ODF table border width casts used by
-the PPTX and XLSX converters from `boost::lexical_cast<int>` to a direct cast,
-avoiding another Boost numeric conversion instantiation rejected by current
-Clang.
-
-### macOS Verification
+## macOS Verification
 
 `build/macos/build.sh arm64` verifies the generated application by checking the
 main executable architecture and running strict codesign verification. Unless
-`EO_SKIP_LAUNCH=1` is set, it also opens the app once as a local launch smoke
-test.
+`EO_SKIP_LAUNCH=1` is set, it opens the app once and waits up to 30 seconds for
+the app process before quitting it again.
+
+The lightweight GitHub Actions check for this path runs:
+
+```sh
+bash -n build/macos/build.sh
+./build/macos/build.sh --check
+./build/macos/build.sh --dry-run arm64
+```

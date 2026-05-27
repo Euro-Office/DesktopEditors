@@ -47,6 +47,29 @@ Desktop Editors contain the following components:
 * [web-apps](https://github.com/Euro-Office/web-apps) - the frontend for [Document Server][1] which is a part of Desktop Editors that allows the user to create, edit, save and export text, spreadsheet and presentation documents using the common interface of a document editor.
 * [dictionaries](https://github.com/Euro-Office/dictionaries) - the dictionaries of various languages used for spellchecking in Desktop Editors.
 
+## Build Instructions
+
+Linux builds use the existing Docker Buildx Bake flow:
+
+```sh
+cd build
+docker buildx bake
+```
+
+macOS Apple Silicon builds use the host Xcode entrypoint under `build/macos`:
+
+```sh
+cd build
+./macos/build.sh --check
+./macos/build.sh --dry-run arm64
+./macos/build.sh arm64
+```
+
+The macOS output is written to
+`build/deploy/macos/arm64/Euro-Office.app`. Full requirements, environment
+variables, patching notes, and verification steps are documented in
+[`build/README.md`](build/README.md).
+
 ## License 📄
 
 Desktop Editors is licensed under the GNU Affero Public License, version 3.0, ensuring its transparency and commitment to the open-source community.
