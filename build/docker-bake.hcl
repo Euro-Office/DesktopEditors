@@ -1,13 +1,5 @@
 # docker-bake.hcl
 
-variable "NEXTCLOUD_USER" {
-  default = ""
-}
-
-variable "NEXTCLOUD_PASS" {
-  default = ""
-}
-
 variable "REGISTRY" {
   default = "euro-office"
 }
@@ -88,8 +80,6 @@ target "_common" {
     PRODUCT_NAME        = "${PRODUCT_NAME}"
     COMPANY_NAME        = "${COMPANY_NAME}"
     COMPANY_NAME_LOW    = "${COMPANY_NAME_LOW}"
-    NEXTCLOUD_USER      = "${NEXTCLOUD_USER}"
-    NEXTCLOUD_PASS      = "${NEXTCLOUD_PASS}"
   }
 }
 
@@ -103,6 +93,10 @@ target "third-party" {
   dockerfile = "./core/.docker/third-party.bake.Dockerfile"
   target     = "third-party-builder"
   tags       = ["${REGISTRY}/third-party:${TAG}"]
+  secret = [
+    "id=nextcloud_user,env=NEXTCLOUD_USER",
+    "id=nextcloud_pass,env=NEXTCLOUD_PASS",
+  ]
   cache-from = ["type=local,src=/tmp/${REGISTRY}/third-party"]
   cache-to   = ["type=local,dest=/tmp/${REGISTRY}/third-party,mode=max"]
 }
@@ -175,6 +169,10 @@ target "desktop-builder" {
     web-apps      = "target:web-apps"
     third-party   = "target:third-party"
   }
+  secret = [
+    "id=nextcloud_user,env=NEXTCLOUD_USER",
+    "id=nextcloud_pass,env=NEXTCLOUD_PASS",
+  ]
   cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-builder"]
   cache-to   = ["type=local,dest=/tmp/${REGISTRY}/desktop-builder,mode=max"]
 }
