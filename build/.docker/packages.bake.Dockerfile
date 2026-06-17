@@ -39,7 +39,7 @@ FROM ubuntu:24.04 AS package
         rm -rf /var/lib/apt/lists/*
 
     #Build files
-    COPY --from=desktop-export / ${OUT_DIR}/
+    COPY --from=desktop-linux /desktopeditors ${OUT_DIR}/
 
     # Upstream packaging repo
     COPY desktop-apps/package/ /desktop-editors-package/
