@@ -466,9 +466,9 @@ jobs:
             desktop-apps/package/advinst/*.msi
 
 
-  build-common:
+  build-linux:
     runs-on: 'ubuntu-latest'
-    needs: build-linux
+    needs: build-common
     permissions:
       contents: write
       packages: write
