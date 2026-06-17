@@ -396,9 +396,9 @@ jobs:
       # ------------------------------------------------------------------ #
       # 9. Install packaging tools
       # ------------------------------------------------------------------ #
-      - name: Install Inno Setup
-        shell: pwsh
-        run: choco install innosetup --version=6.2.2 -y --no-progress
+      #- name: Install Inno Setup
+      #  shell: pwsh
+      #  run: choco install innosetup --version=6.2.2 -y --no-progress --force --allow-downgrade
 
       - name: Install Advanced Installer
         shell: pwsh
@@ -443,8 +443,13 @@ jobs:
         shell: pwsh
         working-directory: desktop-apps/package
         run: |
-          $env:INNOPATH = "${env:ProgramFiles(x86)}\Inno Setup 6"
-          .\make_inno.ps1 -Version "${{ env.PRODUCT_VERSION }}.0" -Arch x64 -Target standalone
+          $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            $iscc = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*','C:\Program Files\Inno Setup*' -Recurse -Filter iscc.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          $env:INNOPATH = Split-Path $iscc.Source ?? $iscc.FullName
+          Write-Host "INNOPATH=$env:INNOPATH"
+          .\make_inno.ps1 -Version "9.3.1.0" -Arch x64 -Target standalone
 
       #- name: Build MSI (Advanced Installer)
       #  shell: pwsh
