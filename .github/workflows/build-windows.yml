@@ -14,29 +14,6 @@ env:
 
 jobs:
 
-  clone:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout fork repository (with submodules)
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          path: .
-          submodules: recursive
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
-
-      - name: Checkout nextcloud-office-brand repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: Euro-Office/nextcloud-office-brand
-          path: build/brands/nextcloud-office-brand
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
-
-      - name: Cache clones
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: "${{ github.workspace }}"
-          key: ${{ runner.os }}-build-${{ github.sha }}
-
   # ─────────────────────────────────────────────────────────────
   # BUILD
   #
@@ -53,7 +30,6 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   build-common:
     runs-on: 'ubuntu-latest'
-    needs: clone
     permissions:
       contents: write
       packages: write
@@ -73,11 +49,19 @@ jobs:
           #  cache_prefix: "nextcloud-office-"
 
     steps:
-      - name: Restore cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - name: Checkout fork repository (with submodules)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          path: "${{ github.workspace }}"
-          key: ${{ runner.os }}-build-${{ github.sha }}
+          path: .
+          submodules: recursive
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Checkout nextcloud-office-brand repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: Euro-Office/nextcloud-office-brand
+          path: build/brands/nextcloud-office-brand
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
 
       - name: Debug workspace
         run: |
@@ -181,11 +165,19 @@ jobs:
       # ------------------------------------------------------------------ #
       # 1. Checkout
       # ------------------------------------------------------------------ #
-      - name: Restore cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - name: Checkout fork repository (with submodules)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          path: "${{ github.workspace }}"
-          key: ${{ runner.os }}-build-${{ github.sha }}
+          path: .
+          submodules: recursive
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Checkout nextcloud-office-brand repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: Euro-Office/nextcloud-office-brand
+          path: build/brands/nextcloud-office-brand
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
 
       - uses: actions/download-artifact@v4
         with:
