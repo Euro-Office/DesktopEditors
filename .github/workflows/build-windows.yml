@@ -140,6 +140,8 @@ jobs:
           BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
           BUILD_ROOT: ${{ env.BUILD_ROOT }}
           NUGET_CACHE: local
+          NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
+          NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
 
       - name: Extract files from image
         run: |
