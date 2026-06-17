@@ -145,7 +145,7 @@ jobs:
 
       - name: Extract files from image
         run: |
-          docker create --name tmp ${{ env.REGISTRY }}/${{ matrix.brand.image_name }}:${{ steps.meta.outputs.sha_short }}
+          docker create --name tmp ${{ env.REGISTRY }}/${{ matrix.brand.image_name }}:${{ steps.meta.outputs.sha_short }} true
           docker cp tmp:/ ./common
           docker rm tmp
       - uses: actions/upload-artifact@v4
