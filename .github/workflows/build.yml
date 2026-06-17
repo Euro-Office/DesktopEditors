@@ -522,6 +522,8 @@ jobs:
           REF_NAME=$(echo '${{ github.ref_name }}' | tr '/' '-')
           echo "ref_name=${REF_NAME}" >> $GITHUB_OUTPUT
 
+          echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
           # Parse PRODUCT_VERSION / BUILD_NUMBER from tag of the form v${PRODUCT_VERSION}-${BUILD_NUMBER}
           # (e.g. v9.3.1-beta.1, v9.3.1-stable.1). Fall back to env defaults otherwise.
           if [[ "$IS_TAG" == "true" && "${{ github.ref_name }}" =~ ^v([^-]+)-(.+)$ ]]; then
@@ -560,6 +562,7 @@ jobs:
             packages.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}packages-buildcache,mode=max
             packages.tags=
         env:
+          GIT_COMMIT: ${{ steps.meta.outputs.sha_short }}
           REGISTRY: ${{ env.REGISTRY }}
           PRODUCT_VERSION: ${{ steps.meta.outputs.product_version }}
           BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
