@@ -365,7 +365,7 @@ jobs:
             desktop-apps/win-linux/
 
       # ------------------------------------------------------------------ #
-      # 8. CMake Build
+      # 8. CMake Build and Install
       # ------------------------------------------------------------------ #
       - name: CMake Build
         shell: cmd
@@ -380,14 +380,78 @@ jobs:
             -- /p:UseMultiToolTask=true /p:EnforceProcessCountAcrossBuilds=true
 
 
+      - name: CMake Install
+        shell: cmd
+        run: cmake --install . --config Release
+
       # ------------------------------------------------------------------ #
-      # 9. Upload build artifacts
+      # 9. Install packaging tools
       # ------------------------------------------------------------------ #
-      - name: Upload build output
-        uses: actions/upload-artifact@v4
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --version=6.2.2 -y --no-progress
+
+      - name: Install Advanced Installer
+        shell: pwsh
+        run: |
+          choco install advanced-installer -y --no-progress
+          # Register your license (Advanced Installer requires a licensed copy
+          # for command-line builds). Store the key as a secret.
+          $ai = "${env:ProgramFiles(x86)}\Caphyon\Advanced Installer*\bin\x86\AdvancedInstaller.com"
+          $aiExe = (Get-Item $ai | Select-Object -First 1).FullName
+          & $aiExe /RegisterCI "${{ secrets.ADVINST_LICENSE_KEY }}"
+
+      # ------------------------------------------------------------------ #
+      # 10. Stage the build output for packaging
+      #     SourceDir = the CMake install dir (the "desktopeditors" folder).
+      #     Adjust the path to wherever cmake --install put it; if you only
+      #     ran `cmake --build`, run the install step first (see note below).
+      # ------------------------------------------------------------------ #
+      - name: Stage build (make.ps1)
+        shell: pwsh
+        working-directory: desktop-apps/package
+        run: |
+          $ver = "${{ env.PRODUCT_VERSION }}.0"   # System.Version needs 4 parts; map as you like
+          .\make.ps1 `
+            -Version $ver `
+            -Arch x64 `
+            -Target standalone `
+            -CompanyName Euro-Office `
+            -ProductName DesktopEditors `
+            -SourceDir "${{ github.workspace }}\build\desktopeditors"
+
+      # ------------------------------------------------------------------ #
+      # 11. Build all three packages from the staged build\x64\desktop
+      # ------------------------------------------------------------------ #
+      - name: Build ZIP
+        shell: pwsh
+        working-directory: desktop-apps/package
+        run: |
+          $env:PATH = "C:\Program Files\7-Zip;$env:PATH"
+          .\make_zip.ps1 -Version "${{ env.PRODUCT_VERSION }}.0" -Arch x64 -Target standalone
+
+      - name: Build Inno installer (.exe)
+        shell: pwsh
+        working-directory: desktop-apps/package
+        run: |
+          $env:INNOPATH = "${env:ProgramFiles(x86)}\Inno Setup 6"
+          .\make_inno.ps1 -Version "${{ env.PRODUCT_VERSION }}.0" -Arch x64 -Target standalone
+
+      - name: Build MSI (Advanced Installer)
+        shell: pwsh
+        working-directory: desktop-apps/package
+        run: |
+          $aiRoot = (Get-Item "${env:ProgramFiles(x86)}\Caphyon\Advanced Installer*").FullName
+          $env:ADVINSTPATH = Join-Path $aiRoot 'bin\x86'
+          .\make_advinst.ps1 -Version "${{ env.PRODUCT_VERSION }}.0" -Arch x64
+
+      # ------------------------------------------------------------------ #
+      # 12. Collect artifacts
+      # ------------------------------------------------------------------ #
+      - uses: actions/upload-artifact@v4
         with:
-          name: build-output-windows
+          name: windows-packages
           path: |
-            package/bin/
-            package/tools/
-          if-no-files-found: warn
+            desktop-apps/package/zip/*.zip
+            desktop-apps/package/inno/*.exe
+            desktop-apps/package/advinst/*.msi
