@@ -4,7 +4,7 @@
 # docker-bake.hcl file in this monorepo.
 # ==============================================================================
 
-FROM desktop-builder AS desktop-composer
+FROM allgen-builder AS desktop-composer
 
     COPY --from=sdkjs-desktop ${BUILD_ROOT} /desktopeditors/editors/
     COPY --from=web-apps ${BUILD_ROOT} /desktopeditors/editors/
@@ -36,6 +36,8 @@ FROM desktop-builder AS desktop-composer
     COPY core-fonts/openoffice /desktopeditors/fonts/openoffice
     COPY core-fonts/ASC.ttf    /desktopeditors/fonts/ASC.ttf
 
+    RUN cp -r /package/* /desktopeditors/converter/ 
+
     RUN /desktopeditors/converter/allfontsgen \
         --use-system=1 \
         --input=/desktopeditors/fonts \
@@ -49,8 +51,13 @@ FROM desktop-builder AS desktop-composer
         --allfonts=/desktopeditors/converter/AllFonts.js \
         --output=/desktopeditors/editors/sdkjs/common/Images
 
+    RUN rm /desktopeditors/converter/*.so* && \
+        rm /desktopeditors/converter/x2t && \
+        rm /desktopeditors/converter/allthemesgen && \
+        rm /desktopeditors/converter/allfontsgen
+
     RUN echo 'LD_LIBRARY_PATH=$PWD:$PWD/converter:$LD_LIBRARY_PATH LD_PRELOAD=libcef.so ./DesktopEditors' > /desktopeditors/start_desktop.sh && \
         chmod +x /desktopeditors/start_desktop.sh
 
-FROM scratch AS desktop-export
+FROM scratch AS desktop-common
     COPY --from=desktop-composer /desktopeditors /

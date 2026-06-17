@@ -4,6 +4,14 @@ variable "GIT_COMMIT" {
   default = ""
 } 
 
+variable "NEXTCLOUD_USER" {
+  default = ""
+}
+
+variable "NEXTCLOUD_PASS" {
+  default = ""
+}
+
 variable "REGISTRY" {
   default = "ghcr.io/euro-office"
 }
@@ -17,7 +25,7 @@ variable "PRODUCT_VERSION" {
 }
 
 variable "BUILD_NUMBER" {
-  default = "0"
+  default = "dev.0"
 }
 
 
@@ -62,12 +70,9 @@ variable "PRODUCT_NAME" {
 # ──────────────────────────────────────────────
 
 group "default" {
-  targets = ["desktop-common"]
+  targets = ["packages"]
 }
 
-group "deps" {
-  targets = ["core-base", "desktop-js", "sdkjs-desktop", "web-apps"]
-}
 
 # ──────────────────────────────────────────────
 # SHARED ARGS (inherited by all targets)
@@ -84,6 +89,8 @@ target "_common" {
     PRODUCT_NAME        = "${PRODUCT_NAME}"
     COMPANY_NAME        = "${COMPANY_NAME}"
     COMPANY_NAME_LOW    = "${COMPANY_NAME_LOW}"
+    NEXTCLOUD_USER      = "${NEXTCLOUD_USER}"
+    NEXTCLOUD_PASS      = "${NEXTCLOUD_PASS}"
   }
 }
 
@@ -91,9 +98,20 @@ target "_common" {
 # DEPENDENCY TARGETS
 # ──────────────────────────────────────────────
 
+target "third-party" {
+  inherits   = ["_common"]
+  context    = "../.."
+  dockerfile = "./core/.docker/third-party.bake.Dockerfile"
+  target     = "third-party-builder"
+  tags       = ["${REGISTRY}/third-party:${TAG}"]
+  cache-from = ["type=local,src=/tmp/${REGISTRY}/third-party"]
+  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/third-party,mode=max"]
+}
+
+
 target "core-base" {
   inherits   = ["_common"]
-  context    = ".."
+  context    = "../.."
   dockerfile = "./core/.docker/core.bake.Dockerfile"
   target     = "core-base"
   tags       = ["${REGISTRY}/core-base:${TAG}"]
@@ -101,88 +119,41 @@ target "core-base" {
   cache-to   = ["type=local,dest=/tmp/${REGISTRY}/core-base,mode=max"]
 }
 
-target "core-wasm" {
-  inherits   = ["_common"]
-  context    = ".."
-  dockerfile = "./core/.docker/core-wasm.bake.Dockerfile"
-  tags       = ["${REGISTRY}/core-wasm:${TAG}"]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/core-wasm"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/core-wasm,mode=max"]
-}
-
-target "desktop-js" {
-  inherits   = ["_common"]
-  context    = ".."
-  dockerfile = "./desktop-apps/.docker/desktop-js.bake.Dockerfile"
-  tags       = ["${REGISTRY}/desktop-js:${TAG}"]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-js"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/desktop-js,mode=max"]
-}
-
-target "sdkjs-desktop" {
-  inherits   = ["_common"]
-  context    = ".."
-  dockerfile = "./sdkjs/.docker/sdkjs.bake.Dockerfile"
-  tags       = ["${REGISTRY}/sdkjs-desktop:${TAG}"]
-  target     = "sdkjs-desktop"
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/sdkjs-desktop"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/sdkjs-desktop,mode=max"]
-  contexts = {
-    core-wasm    = "target:core-wasm"
-  }
-}
-
-target "web-apps" {
-  inherits   = ["_common"]
-  context    = ".."
-  dockerfile = "./web-apps/.docker/web-apps.bake.Dockerfile"
-  tags       = ["${REGISTRY}/web-apps:${TAG}"]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/web-apps"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/web-apps,mode=max"]
-}
-
 # ──────────────────────────────────────────────
 # BUILD TARGET
 # ──────────────────────────────────────────────
 
-target "allgen-builder" {
+target "desktop-linux" {
   inherits   = ["_common"]
-  context    = ".."
+  context    = "../.."
   dockerfile = "./desktop-apps/.docker/desktop-apps.bake.Dockerfile"
-  target     = "allgen-builder"
-  tags       = ["${REGISTRY}/allgen-builder:${TAG}"]
+  target     = "desktop-linux"
+  tags       = ["${REGISTRY}/desktop-linux:${TAG}"]
   contexts = {
-    core-base     = "target:core-base"
+    desktop-common  = "docker-image://${REGISTRY}/desktop-common:${GIT_COMMIT}"
+    core-base       = "target:core-base"
+    third-party     = "target:third-party"
   }
-  secret = [
-    "id=nextcloud_user,env=NEXTCLOUD_USER",
-    "id=nextcloud_pass,env=NEXTCLOUD_PASS",
-  ]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-builder"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/desktop-builder,mode=max"]
+  cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-linux"]
+  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/desktop-linux,mode=max"]
 }
 
 # ──────────────────────────────────────────────
 # EXPORT TARGET
 # ──────────────────────────────────────────────
 
-
-### Compose files that are common to all operating systems
-target "desktop-common" {
+target "packages" {
   inherits   = ["_common"]
-  context    = ".."
-  dockerfile = "./build/.docker/desktop-composer.bake.Dockerfile"
-  target     = "desktop-common"       # points to the FROM scratch stage
-  tags       = ["${REGISTRY}/desktop-common:${GIT_COMMIT}"]
+  context    = "../.."
+  dockerfile = "./build/.docker/packages.bake.Dockerfile"
+  target     = "packages"       # points to the FROM scratch stage
+  tags       = ["${REGISTRY}/packages:${TAG}"]
   contexts = {
-    desktop-js      = "target:desktop-js"       #   even in stages before desktop-common
-    sdkjs-desktop   = "target:sdkjs-desktop"
-    web-apps        = "target:web-apps"
-    allgen-builder  = "target:allgen-builder"
+    desktop-linux          = "target:desktop-linux"
   }
 
   # Export the filesystem directly to a local directory instead of an image
-  output = ["type=docker"]
+  output = ["type=local,dest=./deploy/packages"]
 
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-common"]  # reuses builder cache
+  cache-from = ["type=local,src=/tmp/${REGISTRY}/packages"]  # reuses builder cache
 }
