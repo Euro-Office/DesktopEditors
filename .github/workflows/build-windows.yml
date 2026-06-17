@@ -1,4 +1,4 @@
-name: Build (Windows x64)
+name: Build (Windows/Linux)
 
 on:
   pull_request:
@@ -78,6 +78,12 @@ jobs:
         with:
           path: "${{ github.workspace }}"
           key: ${{ runner.os }}-build-${{ github.sha }}
+
+      - name: Debug workspace
+        run: |
+          echo "workspace: ${{ github.workspace }}"
+          ls -la "${{ github.workspace }}"
+          ls -la "${{ github.workspace }}/build" || echo "build/ MISSING"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
