@@ -109,15 +109,35 @@ if (-not $RepoRoot) {
 
 if (-not $CommonDir) { $CommonDir = Join-Path $RepoRoot 'common' }
 $VersionFull = "$ProductVersion.0"            # make.ps1 wants a 4-part System.Version
-$InstallDir  = Join-Path $RepoRoot 'build\desktopeditors'
+$InstallDir  = Join-Path $RepoRoot 'desktopeditors'
 $PackageDir  = Join-Path $RepoRoot 'desktop-apps\package'
 
 # ───────────────────────────── helpers ──────────────────────────────────────
+# When this runs inside GitHub Actions, emit ::group::/::endgroup:: so each
+# phase is a collapsible, individually-timed section in the Actions log -
+# recovering the per-step UI you'd otherwise lose by calling one script.
+# Locally it prints a plain banner instead.
+$script:InActions = ($env:GITHUB_ACTIONS -eq 'true')
+$script:GroupOpen = $false
+
 function Write-Step([string]$Msg) {
-    Write-Host ''
-    Write-Host ('=' * 78) -ForegroundColor Cyan
-    Write-Host "  $Msg" -ForegroundColor Cyan
-    Write-Host ('=' * 78) -ForegroundColor Cyan
+    if ($script:InActions) {
+        if ($script:GroupOpen) { Write-Host '::endgroup::' }
+        Write-Host "::group::$Msg"
+        $script:GroupOpen = $true
+    } else {
+        Write-Host ''
+        Write-Host ('=' * 78) -ForegroundColor Cyan
+        Write-Host "  $Msg" -ForegroundColor Cyan
+        Write-Host ('=' * 78) -ForegroundColor Cyan
+    }
+}
+
+function Close-StepGroup {
+    if ($script:InActions -and $script:GroupOpen) {
+        Write-Host '::endgroup::'
+        $script:GroupOpen = $false
+    }
 }
 
 function Assert-LastExit([string]$What) {
@@ -360,10 +380,16 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
     cmake --install . --config Release
     Assert-LastExit "CMake install"
 
-    # ─────────────── 9. merge common editors into the install tree ──────────
-    Write-Step "9. Merging common editors content into the install dir"
-    New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'editors') | Out-Null
-    Copy-Item -Recurse -Force (Join-Path $CommonDir 'editors\*') (Join-Path $InstallDir 'editors\')
+    # ─────────────── 9. overlay the common tree onto the install dir ────────
+    # Mirror the entire common payload over the installed tree (matches the
+    # workflow's robocopy). robocopy uses exit codes 0-7 for success and >=8
+    # for real errors, so don't treat any nonzero code as failure - and reset
+    # $LASTEXITCODE afterward so later Assert-LastExit checks aren't tripped.
+    Write-Step "9. Overlaying common content onto the install dir"
+    robocopy $CommonDir $InstallDir /E /IS /IT /NFL /NDL /NJH /NJS
+    $rc = $LASTEXITCODE
+    if ($rc -ge 8) { throw "robocopy overlay failed (exit $rc)." }
+    $global:LASTEXITCODE = 0
 
     # ───────────────────────── 10/11. packaging ─────────────────────────────
     if ($SkipPackaging) {
@@ -387,7 +413,23 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
             Assert-LastExit "make_zip.ps1"
 
             Write-Step "11b. Build Inno installer (make_inno.ps1)"
-            $env:INNOPATH = $InnoRoot
+            # Prefer iscc.exe already on PATH (the runner image ships Inno
+            # Setup), then search the usual install roots, then fall back to
+            # -InnoRoot. INNOPATH must point at the directory holding iscc.exe.
+            $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
+            if (-not $iscc) {
+                $iscc = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*','C:\Program Files\Inno Setup*' `
+                            -Recurse -Filter iscc.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+            }
+            if ($iscc) {
+                $isccPath = if ($iscc.Source) { $iscc.Source } else { $iscc.FullName }
+                $env:INNOPATH = Split-Path $isccPath
+            } elseif (Test-Path (Join-Path $InnoRoot 'iscc.exe')) {
+                $env:INNOPATH = $InnoRoot
+            } else {
+                throw "Inno Setup (iscc.exe) not found. Install it or pass -InnoRoot."
+            }
+            Write-Host "INNOPATH=$env:INNOPATH"
             .\make_inno.ps1 -Version $VersionFull -Arch $Arch -Target $Target
             Assert-LastExit "make_inno.ps1"
 
@@ -407,5 +449,6 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
     }
 }
 finally {
+    Close-StepGroup
     Pop-Location
 }

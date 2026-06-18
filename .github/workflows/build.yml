@@ -164,9 +164,7 @@ jobs:
       NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
 
     steps:
-      # ------------------------------------------------------------------ #
-      # 1. Checkout
-      # ------------------------------------------------------------------ #
+      # ---- orchestration / environment setup (stays in the workflow) ---- #
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -186,31 +184,12 @@ jobs:
           name: common-files
           path: .\common
 
-      - name: Copy files into place
-        shell: pwsh
-        run: |
-          $dest = 'desktop-apps\common\loginpage\deploy'
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
-          Copy-Item .\common\index.html -Destination $dest\index.html
-          Copy-Item .\common\editors\webext\noconnect.html -Destination $dest\noconnect.html
-
-      # ------------------------------------------------------------------ #
-      # 2. Install Cygwin WITHOUT touching PATH.
-      #
-      #    By default cygwin-install-action PREPENDS C:\cygwin\bin to PATH,
-      #    which makes Cygwin's perl/python/git/cmake shadow the Windows-
-      #    native tools no matter what we do afterwards. add-to-path: false
-      #    stops that at the source — no shim renaming needed.
-      # ------------------------------------------------------------------ #
+      # Install Cygwin WITHOUT touching PATH (the script does the PATH ordering).
+      # add-to-path:false stops the action from prepending C:\cygwin\bin and
+      # shadowing the native perl/python/git/cmake.
       - name: Install Cygwin
         uses: cygwin/cygwin-install-action@v4
         with:
-          # Pin the install location explicitly. The action's default has
-          # changed between versions (C:\cygwin, later D:\cygwin), while
-          # most build scripts that shell out to Cygwin assume the stock
-          # installer location C:\cygwin64. A hardcoded path that doesn't
-          # exist is exactly what produces Windows error 3:
-          # "The system cannot find the path specified."
           install-dir: 'C:\cygwin64'
           add-to-path: false
           packages: >-
@@ -221,56 +200,12 @@ jobs:
             python3
             python3-devel
 
-      # ------------------------------------------------------------------ #
-      # 3. Build a deterministic PATH:
-      #      [native perl/python/git/cmake dirs] ; [Cygwin] ; [everything else]
-      #
-      #    Why not just append Cygwin at the end? Because the runner image
-      #    already has Git's MSYS tools (C:\Program Files\Git\usr\bin) in
-      #    PATH — with Cygwin last, a bare `bash`/`sh` resolves to Git's
-      #    MSYS bash, which is NOT a valid substitute for a Cygwin/MSVC
-      #    build of ICU. This ordering gives Cygwin's bash/make/sh priority
-      #    while the four conflicting tools stay Windows-native.
-      #
-      #    CYGWIN_ROOT is exported for build scripts that locate Cygwin
-      #    via an environment variable instead of PATH.
-      # ------------------------------------------------------------------ #
-      - name: Set up PATH ordering (native tools > Cygwin > rest)
-        shell: pwsh
-        run: |
-          $cyg = 'C:\cygwin64'
-          $nativeDirs = @()
-          foreach ($tool in 'perl', 'python', 'git', 'cmake') {
-            $cmd = Get-Command $tool -ErrorAction SilentlyContinue
-            if ($cmd -and ($cmd.Source -notlike "$cyg\*")) {
-              $dir = Split-Path $cmd.Source
-              # Git for Windows trap: 'Git\bin' contains git.exe but ALSO
-              # bash.exe and sh.exe, which would shadow Cygwin's. The
-              # sibling 'Git\cmd' directory contains only the git launcher,
-              # so prefer that one.
-              if ($tool -eq 'git' -and $dir -like '*\Git\bin') {
-                $cmdDir = Join-Path (Split-Path $dir) 'cmd'
-                if (Test-Path (Join-Path $cmdDir 'git.exe')) { $dir = $cmdDir }
-              }
-              if ($nativeDirs -notcontains $dir) { $nativeDirs += $dir }
-              Write-Host ("native {0,-8} -> {1}  (PATH dir: {2})" -f $tool, $cmd.Source, $dir)
-            }
-          }
-          $newPath = ($nativeDirs + "$cyg\bin" + $env:PATH) -join ';'
-          "PATH=$newPath"      | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "CYGWIN_ROOT=$cyg"   | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-
-      # ------------------------------------------------------------------ #
-      # 4. Install Windows SDK + MSVC v141 toolset + ATL (x86 & x64)
-      # ------------------------------------------------------------------ #
       - name: Install Windows SDK, v141 toolset and ATL
         shell: pwsh
         run: |
           $vsWhere     = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
           $installPath = & $vsWhere -latest -products * -property installationPath
-          Write-Host "VS install path: $installPath"
           & $vsInstaller modify `
             --installPath $installPath `
             --add Microsoft.VisualStudio.Component.Windows10SDK.19041 `
@@ -282,186 +217,25 @@ jobs:
             Write-Warning "vs_installer returned $LASTEXITCODE — components may already be installed, continuing."
           }
 
-      # ------------------------------------------------------------------ #
-      # 5. Verify tool resolution — Get-Command shows exactly which binary
-      #    each bare name resolves to, so failures are self-explanatory.
-      # ------------------------------------------------------------------ #
-      - name: Verify tool versions
-        shell: pwsh
-        run: |
-          foreach ($tool in 'perl', 'python', 'git', 'cmake') {
-            $cmd = Get-Command $tool -ErrorAction SilentlyContinue
-            if ($cmd) {
-              Write-Host ("{0,-8} -> {1}" -f $tool, $cmd.Source)
-              if ($cmd.Source -like 'C:\cygwin64\*') {
-                throw "ERROR: '$tool' resolves to the Cygwin copy at $($cmd.Source)."
-              }
-            } else {
-              Write-Host ("{0,-8} -> (not found in PATH)" -f $tool)
-            }
-          }
-
-          # These SHOULD be the Cygwin copies (ICU's Cygwin/MSVC build needs them)
-          foreach ($tool in 'bash', 'sh', 'make') {
-            $cmd = Get-Command $tool -ErrorAction SilentlyContinue
-            if ($cmd) {
-              Write-Host ("{0,-8} -> {1}" -f $tool, $cmd.Source)
-              if ($cmd.Source -notlike 'C:\cygwin64\*') {
-                throw "ERROR: '$tool' resolves to a non-Cygwin copy at $($cmd.Source)."
-              }
-            } else {
-              throw "ERROR: '$tool' not found in PATH."
-            }
-          }
-
-          Write-Host "--- perl ---"
-          perl --version | Select-String 'This is perl'
-          $perlOut = (perl --version) -join ''
-          if ($perlOut -match 'cygwin') {
-            throw "ERROR: 'perl' is Cygwin Perl."
-          }
-
-          Write-Host "--- python ---"
-          python --version
-          py --version
-
-          Write-Host "--- git ---"
-          git --version
-
-          Write-Host "--- cmake ---"
-          cmake --version
-
-          # NB: don't try to run C:\cygwin64\bin\python3 directly from pwsh —
-          # it's a Cygwin-style symlink that cmd/pwsh can't execute. If you
-          # ever need Cygwin python, call it via:
-          #   C:\cygwin64\bin\bash.exe -lc 'python3 --version'
-
-      # ------------------------------------------------------------------ #
-      # 6. Set up vcpkg  (matches the Linux workflow)
-      # ------------------------------------------------------------------ #
       - name: Set up vcpkg
-        uses: lukka/run-vcpkg@v11
+        uses: lukka/run-vcpkg@v11   # exports VCPKG_ROOT for the script
 
-      # ------------------------------------------------------------------ #
-      # 7. CMake Configure
-      #    vcvars64.bat is located via vswhere so the VS edition (Enterprise/
-      #    Professional/Community) and future image changes don't matter.
-      # ------------------------------------------------------------------ #
-      - name: CMake Configure
-        shell: cmd
-        run: |
-          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
-          echo Using VS at: %VSPATH%
-          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" 10.0.19041.0
-          if errorlevel 1 exit /b 1
-
-          set PYTHONUTF8=1
-
-          cmake -G "Visual Studio 17 2022" ^
-            -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" ^
-            -DVCPKG_MANIFEST_MODE=ON ^
-            -DVCPKG_MANIFEST_DIR="core" ^
-            -DABOUT_PAGE_APP_NAME="Desktop Editors" ^
-            desktop-apps/win-linux/
-
-      # ------------------------------------------------------------------ #
-      # 8. CMake Build and Install
-      # ------------------------------------------------------------------ #
-      - name: CMake Build
-        shell: cmd
-        run: |
-          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
-          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" 10.0.19041.0
-          if errorlevel 1 exit /b 1
-
-          set PYTHONUTF8=1
-
-          cmake --build . --config Release --parallel ^
-            -- /p:UseMultiToolTask=true /p:EnforceProcessCountAcrossBuilds=true
-
-
-      - name: CMake Install
-        shell: cmd
-        run: cmake --install . --config Release
-
-
-      - name: Overlay common onto install dir
+      # ---- build + package (single source of truth: the script) ---- #
+      # Covers: copy login assets, deterministic PATH (native > Cygwin > rest),
+      # tool verification, vcvars + CMake configure/build/install, robocopy
+      # overlay of common, and make.ps1 / make_zip.ps1 / make_inno.ps1.
+      - name: Build & package
         shell: pwsh
         run: |
-          $install = "${{ github.workspace }}\desktopeditors"
-          $common  = "${{ github.workspace }}\common"
-          robocopy "$common" "$install" /E /IS /IT /NFL /NDL /NJH /NJS
-          if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE } else { exit 0 }
+          .\build\windows\build.ps1 `
+            -CommonDir      "${{ github.workspace }}\common" `
+            -ProductVersion "${{ env.PRODUCT_VERSION }}" `
+            -Arch           x64 `
+            -Target         standalone `
+            -CompanyName    Euro-Office `
+            -ProductName    DesktopEditors
 
-      # ------------------------------------------------------------------ #
-      # 9. Install packaging tools
-      # ------------------------------------------------------------------ #
-      #- name: Install Inno Setup
-      #  shell: pwsh
-      #  run: choco install innosetup --version=6.2.2 -y --no-progress --force --allow-downgrade
-
-      #- name: Install Advanced Installer
-      #  shell: pwsh
-      #  run: |
-      #    choco install advanced-installer -y --no-progress
-      #    # Register your license (Advanced Installer requires a licensed copy
-      #    # for command-line builds). Store the key as a secret.
-      #    $ai = "${env:ProgramFiles(x86)}\Caphyon\Advanced Installer*\bin\x86\AdvancedInstaller.com"
-      #    $aiExe = (Get-Item $ai | Select-Object -First 1).FullName
-      #    & $aiExe /RegisterCI "${{ secrets.ADVINST_LICENSE_KEY }}"
-
-      # ------------------------------------------------------------------ #
-      # 10. Stage the build output for packaging
-      #     SourceDir = the CMake install dir (the "desktopeditors" folder).
-      #     Adjust the path to wherever cmake --install put it; if you only
-      #     ran `cmake --build`, run the install step first (see note below).
-      # ------------------------------------------------------------------ #
-      - name: Stage build (make.ps1)
-        shell: pwsh
-        working-directory: desktop-apps/package
-        run: |
-          $ver = "${{ env.PRODUCT_VERSION }}.0"   # System.Version needs 4 parts; map as you like
-          .\make.ps1 `
-            -Version $ver `
-            -Arch x64 `
-            -Target standalone `
-            -CompanyName Euro-Office `
-            -ProductName DesktopEditors `
-            -SourceDir "${{ github.workspace }}\desktopeditors"
-
-      # ------------------------------------------------------------------ #
-      # 11. Build all three packages from the staged build\x64\desktop
-      # ------------------------------------------------------------------ #
-      - name: Build ZIP
-        shell: pwsh
-        working-directory: desktop-apps/package
-        run: |
-          $env:PATH = "C:\Program Files\7-Zip;$env:PATH"
-          .\make_zip.ps1 -Version "${{ env.PRODUCT_VERSION }}.0" -Arch x64 -Target standalone
-
-      - name: Build Inno installer (.exe)
-        shell: pwsh
-        working-directory: desktop-apps/package
-        run: |
-          $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
-          if (-not $iscc) {
-            $iscc = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*','C:\Program Files\Inno Setup*' -Recurse -Filter iscc.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-          $env:INNOPATH = Split-Path $iscc.Source ?? $iscc.FullName
-          Write-Host "INNOPATH=$env:INNOPATH"
-          .\make_inno.ps1 -Version "9.3.1.0" -Arch x64 -Target standalone
-
-      #- name: Build MSI (Advanced Installer)
-      #  shell: pwsh
-      #  working-directory: desktop-apps/package
-      #  run: |
-      #    $aiRoot = (Get-Item "${env:ProgramFiles(x86)}\Caphyon\Advanced Installer*").FullName
-      #    $env:ADVINSTPATH = Join-Path $aiRoot 'bin\x86'
-      #    .\make_advinst.ps1 -Version "${{ env.PRODUCT_VERSION }}.0" -Arch x64
-
-      # ------------------------------------------------------------------ #
-      # 12. Collect artifacts
-      # ------------------------------------------------------------------ #
+      # ---- collect outputs (stays in the workflow) ---- #
       - uses: actions/upload-artifact@v4
         with:
           name: windows-packages
