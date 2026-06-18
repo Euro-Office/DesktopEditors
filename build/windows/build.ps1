@@ -356,28 +356,49 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
     Import-VcVars -Arch $Arch -SdkVersion $WinSdkVersion
 
     # ───────────────────────── 7. CMake Configure ───────────────────────────
+    # Generator is Ninja (NOT the VS/MSBuild generator) on purpose: MSBuild
+    # ignores CMAKE_<LANG>_COMPILER_LAUNCHER, Ninja honors it - that launcher
+    # is how the compiler cache attaches. cl.exe is already on PATH from the
+    # vcvars import above; the target arch follows vcvars (x64 via vcvars64).
     Write-Step "7. CMake Configure"
     $cmakeArgs = @(
-        '-G', 'Visual Studio 17 2022'
-    )
-    if ($Arch -eq 'x86') { $cmakeArgs += @('-A', 'Win32') }
-    $cmakeArgs += @(
+        '-G', 'Ninja',
+        '-DCMAKE_BUILD_TYPE=Release',
         "-DCMAKE_TOOLCHAIN_FILE=$($env:VCPKG_ROOT)\scripts\buildsystems\vcpkg.cmake",
         '-DVCPKG_MANIFEST_MODE=ON',
         '-DVCPKG_MANIFEST_DIR=core',
-        '-DABOUT_PAGE_APP_NAME=Desktop Editors',
-        'desktop-apps/win-linux/'
+        '-DABOUT_PAGE_APP_NAME=Desktop Editors'
     )
+    # sccache caches MSVC object files by content hash and (with
+    # SCCACHE_GHA_ENABLED=true) persists them in the GitHub Actions cache, so a
+    # re-run recompiles only what changed. /Z7 embedded debug info is REQUIRED -
+    # with separate PDBs (/Zi) sccache refuses to cache and you get zero hits.
+    # Verify with `sccache --show-stats` after the build.
+    if (Get-Command sccache -ErrorAction SilentlyContinue) {
+        Write-Host "sccache detected - enabling compiler cache."
+        $cmakeArgs += @(
+            '-DCMAKE_C_COMPILER_LAUNCHER=sccache',
+            '-DCMAKE_CXX_COMPILER_LAUNCHER=sccache',
+            '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded'
+        )
+    } else {
+        Write-Warning "sccache not found on PATH - building WITHOUT a compiler cache."
+    }
+    $cmakeArgs += 'desktop-apps/win-linux/'
     cmake @cmakeArgs
     Assert-LastExit "CMake configure"
 
     # ─────────────────────── 8. CMake Build + Install ───────────────────────
+    # Single-config Ninja: build type comes from CMAKE_BUILD_TYPE, so no
+    # --config here, and the MSBuild-only /p: flags are gone.
     Write-Step "8. CMake Build"
-    cmake --build . --config Release --parallel -- /p:UseMultiToolTask=true /p:EnforceProcessCountAcrossBuilds=true
+    if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --zero-stats | Out-Null }
+    cmake --build . --parallel
     Assert-LastExit "CMake build"
+    if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --show-stats }
 
     Write-Step "8b. CMake Install"
-    cmake --install . --config Release
+    cmake --install .
     Assert-LastExit "CMake install"
 
     # ─────────────── 9. overlay the common tree onto the install dir ────────
@@ -421,7 +442,27 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
         "--input=$RepoRoot\core-fonts" `
         "--allfonts=$converter\AllFonts.js" `
         "--selection=$converter\font_selection.bin"
-    Assert-LastExit "allfontsgen"
+    $genExit = $LASTEXITCODE
+
+    # allfontsgen normally exits 0 even on logical failure, so a nonzero code
+    # here means a LAUNCH failure (e.g. 0xC0150002). Surface the real cause:
+    #  - the Windows SideBySide log names the assembly that couldn't be resolved
+    #  - dumpbin /dependents shows whether it imports a NON-redistributable
+    #    DEBUG CRT (VCRUNTIME140D.dll / MSVCP140D.dll / ucrtbased.dll) - which
+    #    the release redist can't satisfy and would mean the tool was built
+    #    Debug rather than Release.
+    if ($genExit -ne 0 -or -not (Test-Path "$converter\AllFonts.js")) {
+        Write-Host "::group::allfontsgen diagnostics (exit $genExit / 0x$('{0:X8}' -f $genExit))"
+        try {
+            Get-WinEvent -LogName Application -MaxEvents 50 -ErrorAction Stop |
+                Where-Object { $_.ProviderName -match 'SideBySide' } |
+                Select-Object -First 5 | Format-List TimeCreated, Message
+        } catch { Write-Host "No SideBySide events found: $($_.Exception.Message)" }
+        $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
+        if ($dumpbin) { & $dumpbin.Source /dependents "$converter\allfontsgen.exe" }
+        Write-Host "::endgroup::"
+        throw "allfontsgen failed (exit $genExit / 0x$('{0:X8}' -f $genExit))."
+    }
 
     & "$converter\allthemesgen.exe" `
         "--converter-dir=$converter" `
