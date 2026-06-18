@@ -388,7 +388,7 @@ jobs:
       - name: Overlay common onto install dir
         shell: pwsh
         run: |
-          $install = "${{ github.workspace }}\build\desktopeditors"
+          $install = "${{ github.workspace }}\desktopeditors"
           $common  = "${{ github.workspace }}\common"
           robocopy "$common" "$install" /E /IS /IT /NFL /NDL /NJH /NJS
           if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE } else { exit 0 }
@@ -427,7 +427,7 @@ jobs:
             -Target standalone `
             -CompanyName Euro-Office `
             -ProductName DesktopEditors `
-            -SourceDir "${{ github.workspace }}\build\desktopeditors"
+            -SourceDir "${{ github.workspace }}\desktopeditors"
 
       # ------------------------------------------------------------------ #
       # 11. Build all three packages from the staged build\x64\desktop
