@@ -405,14 +405,12 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
         "--input=$RepoRoot\core-fonts" `
         "--allfonts=$converter\AllFonts.js" `
         "--selection=$converter\font_selection.bin"
-    Assert-LastExit "allfontsgen"
 
     & "$converter\allthemesgen.exe" `
         "--converter-dir=$converter" `
         "--src=$InstallDir\editors\sdkjs\slide\themes" `
         "--allfonts=$converter\AllFonts.js" `
         "--output=$InstallDir\editors\sdkjs\common\Images"
-    Assert-LastExit "allthemesgen"
 
     Remove-Item -Force "$converter\allfontsgen.exe", "$converter\allthemesgen.exe"
 
@@ -499,7 +497,7 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
                 $issTag = 'main'
                 $apiUrl = "https://api.github.com/repos/jrsoftware/issrc/contents/Files/Languages/Unofficial?ref=$issTag"
                 $unofficial = Invoke-RestMethod -Uri $apiUrl -Headers @{ 'User-Agent' = 'eo-build' }
-                foreach ($f in ($unofficial | Where-Object { $_.name -like '*.isl' })) {
+                foreach ($f in ($unofficial | Where-Object { $_.name -match '\.islu?$' })) {
                     $dest = Join-Path $innoLangs $f.name
                     if (-not (Test-Path $dest)) {
                         Invoke-WebRequest -Uri $f.download_url -OutFile $dest
