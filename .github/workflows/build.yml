@@ -232,7 +232,7 @@ jobs:
             -ProductVersion "${{ env.PRODUCT_VERSION }}" `
             -Arch           x64 `
             -Target         standalone `
-            -CompanyName    EuroOffice `
+            -CompanyName    Euro-Office `
             -ProductName    DesktopEditors
 
       # ---- collect outputs (stays in the workflow) ---- #
