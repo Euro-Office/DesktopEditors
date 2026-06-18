@@ -232,7 +232,7 @@ jobs:
             -ProductVersion "${{ env.PRODUCT_VERSION }}" `
             -Arch           x64 `
             -Target         standalone `
-            -CompanyName    Euro-Office `
+            -CompanyName    EuroOffice `
             -ProductName    DesktopEditors
 
       # ---- collect outputs (stays in the workflow) ---- #
@@ -354,5 +354,5 @@ jobs:
         with:
           name: linux-packages
           path: |
-            build/deploy/packages/*.deb
-            build/deploy/packages/*.rpm
+            build/linux/deploy/packages/*.deb
+            build/linux/deploy/packages/*.rpm
