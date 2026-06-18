@@ -159,6 +159,7 @@ jobs:
       PYTHONUTF8: "1"
       NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
       NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
+      SCCACHE_GHA_ENABLED: "true"
 
     steps:
       # ---- orchestration / environment setup (stays in the workflow) ---- #
@@ -213,6 +214,14 @@ jobs:
           if ($LASTEXITCODE -notin @(0, 3010)) {
             Write-Warning "vs_installer returned $LASTEXITCODE — components may already be installed, continuing."
           }
+
+
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.6   # puts sccache on PATH + exports the cache tokens
+
+      - name: Install Ninja
+        shell: pwsh
+        run: choco install ninja -y --no-progress      # usually already on windows-2022; harmless if so
 
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11   # exports VCPKG_ROOT for the script
