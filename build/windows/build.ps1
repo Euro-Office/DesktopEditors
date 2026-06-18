@@ -367,7 +367,16 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
         "-DCMAKE_TOOLCHAIN_FILE=$($env:VCPKG_ROOT)\scripts\buildsystems\vcpkg.cmake",
         '-DVCPKG_MANIFEST_MODE=ON',
         '-DVCPKG_MANIFEST_DIR=core',
-        '-DABOUT_PAGE_APP_NAME=Desktop Editors'
+        '-DABOUT_PAGE_APP_NAME=Desktop Editors',
+        # WIN32 / _WINDOWS: the old VS/MSBuild generator defined these for us; the
+        # Ninja generator's plain cl.exe calls do NOT (MSVC predefines only _WIN32,
+        # never bare WIN32). Vendored code such as core/DjVuFile/libdjvu/GString.h
+        # gates HAS_MBSTATE on bare `#ifdef WIN32`, so without it that header
+        # re-typedefs mbstate_t and collides with the UCRT (error C2371). Define
+        # globally to match the previous generator and avoid other silent
+        # `#ifdef WIN32` branches taking the wrong path under Ninja.
+        '-DCMAKE_C_FLAGS=/DWIN32 /D_WINDOWS',
+        '-DCMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS'
     )
     # sccache caches MSVC object files by content hash and (with
     # SCCACHE_GHA_ENABLED=true) persists them in the GitHub Actions cache, so a
