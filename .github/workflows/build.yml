@@ -385,13 +385,13 @@ jobs:
         run: cmake --install . --config Release
 
 
-      - name: Merge common editors content into install dir
+      - name: Overlay common onto install dir
         shell: pwsh
         run: |
           $install = "${{ github.workspace }}\build\desktopeditors"
           $common  = "${{ github.workspace }}\common"
-          # Merge the editors web payload into the installed tree
-          Copy-Item -Recurse -Force "$common\editors\*" "$install\editors\"
+          robocopy "$common" "$install" /E /IS /IT /NFL /NDL /NJH /NJS
+          if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE } else { exit 0 }
 
       # ------------------------------------------------------------------ #
       # 9. Install packaging tools
