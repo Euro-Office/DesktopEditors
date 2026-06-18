@@ -413,23 +413,51 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
             Assert-LastExit "make_zip.ps1"
 
             Write-Step "11b. Build Inno installer (make_inno.ps1)"
-            # Prefer iscc.exe already on PATH (the runner image ships Inno
-            # Setup), then search the usual install roots, then fall back to
-            # -InnoRoot. INNOPATH must point at the directory holding iscc.exe.
-            $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
-            if (-not $iscc) {
-                $iscc = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*','C:\Program Files\Inno Setup*' `
+            # INNOPATH must point at the Inno Setup program directory. Prefer
+            # the real install dir (it carries the compiler's support files)
+            # over a Chocolatey shim, then any iscc.exe on PATH, then -InnoRoot.
+            $isccItem = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*','C:\Program Files\Inno Setup*' `
                             -Recurse -Filter iscc.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-            }
-            if ($iscc) {
-                $isccPath = if ($iscc.Source) { $iscc.Source } else { $iscc.FullName }
-                $env:INNOPATH = Split-Path $isccPath
-            } elseif (Test-Path (Join-Path $InnoRoot 'iscc.exe')) {
-                $env:INNOPATH = $InnoRoot
+            if ($isccItem) {
+                $env:INNOPATH = Split-Path $isccItem.FullName
             } else {
-                throw "Inno Setup (iscc.exe) not found. Install it or pass -InnoRoot."
+                $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
+                if ($iscc) {
+                    $env:INNOPATH = Split-Path $iscc.Source
+                } elseif (Test-Path (Join-Path $InnoRoot 'iscc.exe')) {
+                    $env:INNOPATH = $InnoRoot
+                } else {
+                    throw "Inno Setup (iscc.exe) not found. Install it or pass -InnoRoot."
+                }
             }
             Write-Host "INNOPATH=$env:INNOPATH"
+
+            # make_inno.ps1 bundles the VC++ redistributable, fetching it at
+            # package time via WebClient from aka.ms (which failed on the
+            # runner). It SKIPS that download when inno\vc_redist.<arch>.exe
+            # already exists with a valid ProductVersion, so pre-stage it here
+            # with a modern, redirect-following, retrying fetch and let
+            # make_inno reuse it.
+            $vcRedist = Join-Path $PackageDir "inno\vc_redist.$Arch.exe"
+            $vcValid  = (Test-Path $vcRedist) -and (Get-Item $vcRedist).VersionInfo.ProductVersion
+            if (-not $vcValid) {
+                $vcUrl = "https://aka.ms/vs/17/release/vc_redist.$Arch.exe"
+                New-Item -ItemType Directory -Force -Path (Split-Path $vcRedist) | Out-Null
+                $got = $false
+                for ($i = 1; $i -le 5 -and -not $got; $i++) {
+                    try {
+                        Write-Host "Pre-fetching VCRedist (attempt $i): $vcUrl"
+                        Invoke-WebRequest -Uri $vcUrl -OutFile $vcRedist
+                        if ((Get-Item $vcRedist).VersionInfo.ProductVersion) { $got = $true }
+                        else { Write-Warning "Downloaded file has no ProductVersion; retrying." }
+                    } catch {
+                        Write-Warning "VCRedist fetch failed (attempt $i): $($_.Exception.Message)"
+                    }
+                    if (-not $got) { Start-Sleep -Seconds 5 }
+                }
+                if (-not $got) { throw "Could not obtain a valid vc_redist.$Arch.exe after 5 attempts." }
+            }
+            Write-Host "VCRedist staged: $((Get-Item $vcRedist).VersionInfo.ProductVersion)"
             .\make_inno.ps1 -Version $VersionFull -Arch $Arch -Target $Target
             Assert-LastExit "make_inno.ps1"
 
