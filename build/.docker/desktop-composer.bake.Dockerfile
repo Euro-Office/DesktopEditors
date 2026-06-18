@@ -4,37 +4,36 @@
 # docker-bake.hcl file in this monorepo.
 # ==============================================================================
 
-FROM allgen-builder AS desktop-composer
-
-    COPY --from=sdkjs-desktop ${BUILD_ROOT} /desktopeditors/editors/
-    COPY --from=web-apps ${BUILD_ROOT} /desktopeditors/editors/
-
-    COPY --from=desktop-js /app/loginpage/deploy/index.html /desktopeditors/index.html
-    COPY --from=desktop-js /app/loginpage/deploy/noconnect.html /desktopeditors/editors/webext/noconnect.html
-
-    COPY web-apps/apps/api/documents/index.html.desktop /desktopeditors/editors/web-apps/apps/api/documents/index.html
-    
-    COPY desktop-apps/common/converter/* /desktopeditors/converter/
-    # Support only Nextcloud for now
-    COPY desktop-apps/common/loginpage/providers/nextcloud /desktopeditors/providers/nextcloud
-    COPY desktop-apps/common/templates /desktopeditors/converter/templates
-
-    COPY desktop-sdk/ChromiumBasedEditors/resources/ /desktopeditors/editors/sdkjs/common/Images/
-    RUN mkdir /desktopeditors/editors/sdkjs-plugins
-
-    COPY build/configs/core/DoctRenderer.config.desktop /desktopeditors/converter/DoctRenderer.config
-    
-    COPY document-templates/new /desktopeditors/converter/empty
-
-    COPY dictionaries/ /desktopeditors/dictionaries
-    
-
-    COPY core-fonts/opensans   /desktopeditors/fonts
-    COPY core-fonts/asana      /desktopeditors/fonts/asana
-    COPY core-fonts/caladea    /desktopeditors/fonts/caladea
-    COPY core-fonts/crosextra  /desktopeditors/fonts/crosextra
-    COPY core-fonts/openoffice /desktopeditors/fonts/openoffice
-    COPY core-fonts/ASC.ttf    /desktopeditors/fonts/ASC.ttf
-
 FROM scratch AS desktop-common
-    COPY --from=desktop-composer /desktopeditors /
+
+    COPY --from=sdkjs-desktop ${BUILD_ROOT} /editors/
+    COPY --from=web-apps ${BUILD_ROOT} /editors/
+
+    COPY --from=desktop-js /app/loginpage/deploy/index.html /index.html
+    COPY --from=desktop-js /app/loginpage/deploy/noconnect.html /editors/webext/noconnect.html
+
+    COPY web-apps/apps/api/documents/index.html.desktop /editors/web-apps/apps/api/documents/index.html
+    
+    COPY desktop-apps/common/converter/* /converter/
+    # Support only Nextcloud for now
+    COPY desktop-apps/common/loginpage/providers/nextcloud /providers/nextcloud
+    COPY desktop-apps/common/templates /converter/templates
+
+    COPY desktop-sdk/ChromiumBasedEditors/resources/ /editors/sdkjs/common/Images/
+
+    COPY build/configs/core/DoctRenderer.config.desktop /converter/DoctRenderer.config
+    
+    COPY document-templates/new /converter/empty
+
+    COPY dictionaries/ /dictionaries
+    
+
+    COPY core-fonts/opensans   /fonts
+    COPY core-fonts/asana      /fonts/asana
+    COPY core-fonts/caladea    /fonts/caladea
+    COPY core-fonts/crosextra  /fonts/crosextra
+    COPY core-fonts/openoffice /fonts/openoffice
+    COPY core-fonts/ASC.ttf    /fonts/ASC.ttf
+
+    # Create sdkjs-plugins dir in scratch image
+    WORKDIR /editors/sdkjs-plugins
