@@ -458,6 +458,31 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
                 if (-not $got) { throw "Could not obtain a valid vc_redist.$Arch.exe after 5 attempts." }
             }
             Write-Host "VCRedist staged: $((Get-Item $vcRedist).VersionInfo.ProductVersion)"
+
+            # common.iss's [Languages] section also references some "unofficial"
+            # Inno translations (Greek, and likely others) that ship in NO stock
+            # Inno install of any version - they live in jrsoftware's separate
+            # translations collection. Stage the full unofficial set into the
+            # compiler's Languages folder so every "compiler:Languages\*.isl"
+            # reference resolves. NB: this writes into the Inno install dir, so
+            # it needs write access there - fine on the CI runner (admin); run
+            # elevated locally, or vendor the .isl files in your fork instead.
+            $innoLangs = Join-Path $env:INNOPATH 'Languages'
+            if (Test-Path $innoLangs) {
+                # Pin $issTag to the tag matching your Inno version to avoid
+                # message-version mismatches (e.g. 'is-6_7_1'); 'main' = latest.
+                $issTag = 'main'
+                $apiUrl = "https://api.github.com/repos/jrsoftware/issrc/contents/Files/Languages/Unofficial?ref=$issTag"
+                $unofficial = Invoke-RestMethod -Uri $apiUrl -Headers @{ 'User-Agent' = 'eo-build' }
+                foreach ($f in ($unofficial | Where-Object { $_.name -like '*.isl' })) {
+                    $dest = Join-Path $innoLangs $f.name
+                    if (-not (Test-Path $dest)) {
+                        Invoke-WebRequest -Uri $f.download_url -OutFile $dest
+                        Write-Host "Staged unofficial language: $($f.name)"
+                    }
+                }
+            }
+
             .\make_inno.ps1 -Version $VersionFull -Arch $Arch -Target $Target
             Assert-LastExit "make_inno.ps1"
 
