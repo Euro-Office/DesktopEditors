@@ -5,9 +5,10 @@
 # ==============================================================================
 
 FROM scratch AS desktop-common
+    ARG BUILD_ROOT
 
-    COPY --chmod=0755 --from=sdkjs-desktop ${BUILD_ROOT} /editors/
-    COPY --chmod=0755 --from=web-apps ${BUILD_ROOT} /editors/
+    COPY --from=sdkjs-desktop ${BUILD_ROOT} /editors/
+    COPY --from=web-apps ${BUILD_ROOT} /editors/
 
     COPY --from=desktop-js /app/loginpage/deploy/index.html /index.html
     COPY --from=desktop-js /app/loginpage/deploy/noconnect.html /editors/webext/noconnect.html
