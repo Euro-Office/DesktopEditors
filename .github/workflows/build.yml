@@ -400,15 +400,15 @@ jobs:
       #  shell: pwsh
       #  run: choco install innosetup --version=6.2.2 -y --no-progress --force --allow-downgrade
 
-      - name: Install Advanced Installer
-        shell: pwsh
-        run: |
-          choco install advanced-installer -y --no-progress
-          # Register your license (Advanced Installer requires a licensed copy
-          # for command-line builds). Store the key as a secret.
-          $ai = "${env:ProgramFiles(x86)}\Caphyon\Advanced Installer*\bin\x86\AdvancedInstaller.com"
-          $aiExe = (Get-Item $ai | Select-Object -First 1).FullName
-          & $aiExe /RegisterCI "${{ secrets.ADVINST_LICENSE_KEY }}"
+      #- name: Install Advanced Installer
+      #  shell: pwsh
+      #  run: |
+      #    choco install advanced-installer -y --no-progress
+      #    # Register your license (Advanced Installer requires a licensed copy
+      #    # for command-line builds). Store the key as a secret.
+      #    $ai = "${env:ProgramFiles(x86)}\Caphyon\Advanced Installer*\bin\x86\AdvancedInstaller.com"
+      #    $aiExe = (Get-Item $ai | Select-Object -First 1).FullName
+      #    & $aiExe /RegisterCI "${{ secrets.ADVINST_LICENSE_KEY }}"
 
       # ------------------------------------------------------------------ #
       # 10. Stage the build output for packaging
