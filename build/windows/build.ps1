@@ -399,18 +399,36 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
     Write-Step "9b. Generate fonts and theme thumbnails"
     $converter = Join-Path $InstallDir 'converter'
 
+    # The generators are native exes that must LAUNCH on this host. Windows
+    # refused to start allfontsgen with exit -1072365566 = 0xC0150002
+    # (STATUS_SXS_CANT_GEN_ACTCTX) - a side-by-side/activation-context failure,
+    # almost always a missing VC++ runtime. Install it on the build host. (This
+    # is the runtime needed to RUN the tool here, separate from the vc_redist
+    # copy bundled into the installer later. Needs admin: fine on CI; run
+    # elevated locally.)
+    $vcHost = Join-Path $env:TEMP "vc_redist.$Arch.exe"
+    if (-not (Test-Path $vcHost)) {
+        Invoke-WebRequest "https://aka.ms/vs/17/release/vc_redist.$Arch.exe" -OutFile $vcHost
+    }
+    $vcProc = Start-Process -FilePath $vcHost -ArgumentList '/install','/quiet','/norestart' -Wait -PassThru
+    if ($vcProc.ExitCode -notin @(0, 1638, 3010)) {
+        Write-Warning "vc_redist install returned $($vcProc.ExitCode); continuing."
+    }
+
     & "$converter\allfontsgen.exe" `
         --use-system=1 `
         "--input=$InstallDir\fonts" `
         "--input=$RepoRoot\core-fonts" `
         "--allfonts=$converter\AllFonts.js" `
         "--selection=$converter\font_selection.bin"
+    Assert-LastExit "allfontsgen"
 
     & "$converter\allthemesgen.exe" `
         "--converter-dir=$converter" `
         "--src=$InstallDir\editors\sdkjs\slide\themes" `
         "--allfonts=$converter\AllFonts.js" `
         "--output=$InstallDir\editors\sdkjs\common\Images"
+    Assert-LastExit "allthemesgen"
 
     Remove-Item -Force "$converter\allfontsgen.exe", "$converter\allthemesgen.exe"
 
