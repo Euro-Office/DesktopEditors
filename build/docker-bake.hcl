@@ -142,27 +142,6 @@ target "web-apps" {
 }
 
 # ──────────────────────────────────────────────
-# BUILD TARGET
-# ──────────────────────────────────────────────
-
-target "allgen-builder" {
-  inherits   = ["_common"]
-  context    = ".."
-  dockerfile = "./desktop-apps/.docker/desktop-apps.bake.Dockerfile"
-  target     = "allgen-builder"
-  tags       = ["${REGISTRY}/allgen-builder:${TAG}"]
-  contexts = {
-    core-base     = "target:core-base"
-  }
-  secret = [
-    "id=nextcloud_user,env=NEXTCLOUD_USER",
-    "id=nextcloud_pass,env=NEXTCLOUD_PASS",
-  ]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-builder"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/desktop-builder,mode=max"]
-}
-
-# ──────────────────────────────────────────────
 # EXPORT TARGET
 # ──────────────────────────────────────────────
 
@@ -178,7 +157,6 @@ target "desktop-common" {
     desktop-js      = "target:desktop-js"       #   even in stages before desktop-common
     sdkjs-desktop   = "target:sdkjs-desktop"
     web-apps        = "target:web-apps"
-    allgen-builder  = "target:allgen-builder"
   }
 
   # Export the filesystem directly to a local directory instead of an image

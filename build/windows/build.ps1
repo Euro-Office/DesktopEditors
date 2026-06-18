@@ -391,6 +391,31 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
     if ($rc -ge 8) { throw "robocopy overlay failed (exit $rc)." }
     $global:LASTEXITCODE = 0
 
+    # ─────────── 9b. generate fonts + slide-theme thumbnails ────────────────
+    # allfontsgen builds AllFonts.js + font_selection.bin from the installed
+    # and core fonts; allthemesgen then uses AllFonts.js to render the slide-
+    # theme thumbnails. Order matters - themes consume the fonts output - and
+    # both tools are deleted afterward so they don't ship in the package.
+    Write-Step "9b. Generate fonts and theme thumbnails"
+    $converter = Join-Path $InstallDir 'converter'
+
+    & "$converter\allfontsgen.exe" `
+        --use-system=1 `
+        "--input=$InstallDir\fonts" `
+        "--input=$RepoRoot\core-fonts" `
+        "--allfonts=$converter\AllFonts.js" `
+        "--selection=$converter\font_selection.bin"
+    Assert-LastExit "allfontsgen"
+
+    & "$converter\allthemesgen.exe" `
+        "--converter-dir=$converter" `
+        "--src=$InstallDir\editors\sdkjs\slide\themes" `
+        "--allfonts=$converter\AllFonts.js" `
+        "--output=$InstallDir\editors\sdkjs\common\Images"
+    Assert-LastExit "allthemesgen"
+
+    Remove-Item -Force "$converter\allfontsgen.exe", "$converter\allthemesgen.exe"
+
     # ───────────────────────── 10/11. packaging ─────────────────────────────
     if ($SkipPackaging) {
         Write-Step "Packaging skipped (-SkipPackaging). Build output is at: $InstallDir"
