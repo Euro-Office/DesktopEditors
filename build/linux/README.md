@@ -40,6 +40,7 @@ The two targets you'll care about:
   consumes. Build it on its own when you only need the common content:
 
   ```sh
+  cd build
   docker buildx bake -f ./docker-bake.hcl desktop-common
   ```
 
