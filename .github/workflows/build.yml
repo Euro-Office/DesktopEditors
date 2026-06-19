@@ -118,6 +118,7 @@ jobs:
           fi
 
       - name: Build all targets (packages → docker → develop)
+        id: buildx
         uses: docker/bake-action@4a9a8d494466d37134e2bfca2d3a8de8fb2681ad # v5.13.0
         with:
           workdir: ./build
@@ -362,6 +363,7 @@ jobs:
           fi
 
       - name: Build all targets (packages → docker → develop)
+        id: buildx
         uses: docker/bake-action@4a9a8d494466d37134e2bfca2d3a8de8fb2681ad # v5.13.0
         with:
           workdir: ./build/linux
