@@ -76,7 +76,7 @@ translation, or a pull request, here's how to take part:
   make your change, and open a pull request. For build changes, see the
   [build docs](./build/README.md) above.
 * **Want to help translate?** Localization improvements are always appreciated —
-  see the [dictionaries](https://github.com/Euro-Office/dictionaries) repo and
+  see 
   the editors' interface translations.
 
 Please keep contributions compatible with the project's AGPL v3 license.
