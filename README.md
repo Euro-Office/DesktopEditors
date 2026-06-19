@@ -26,7 +26,7 @@ The suite empowers you to create, edit, save, and export text documents, spreads
 
 ## Localization 🌐
 
- Constantly improving localization of the editors to make the suite accessible to all users, all over the world.
+Constantly improving localization of the editors to make the suite accessible to all users, all over the world.
 
 * Interface available in 46 languages
 * RTL support
@@ -46,6 +46,40 @@ Desktop Editors contain the following components:
 * [sdkjs](https://github.com/Euro-Office/sdkjs) - JavaScript SDK for the [Document Server][1] which is a part of Desktop Editors and contains API for all the included components client-side interaction.
 * [web-apps](https://github.com/Euro-Office/web-apps) - the frontend for [Document Server][1] which is a part of Desktop Editors that allows the user to create, edit, save and export text, spreadsheet and presentation documents using the common interface of a document editor.
 * [dictionaries](https://github.com/Euro-Office/dictionaries) - the dictionaries of various languages used for spellchecking in Desktop Editors.
+
+## Build it yourself 🛠️
+
+You can build Desktop Editors from source on **Windows** and **Linux**. This is a
+super-repository, so the first step is always to check out the submodules:
+
+```sh
+git clone https://github.com/Euro-Office/DesktopEditors.git
+cd DesktopEditors
+git submodule update --init --recursive
+```
+
+Then head to the build docs:
+
+* **[build/](./build/README.md)** — start here for the overall build model (the
+  shared CMake definition, the common editors payload, vcpkg, and caching).
+* **[build/windows/](./build/windows/README.md)** — the Windows build (`build.ps1`, MSVC + CMake).
+* **[build/linux/](./build/linux/README.md)** — the Linux build (Docker / `docker buildx bake`).
+
+## Get involved 🤝
+
+Contributions are welcome! Whether it's a bug report, a feature idea, a
+translation, or a pull request, here's how to take part:
+
+* **Found a bug or have an idea?** Open an [issue](https://github.com/Euro-Office/DesktopEditors/issues)
+  and describe what you ran into or what you'd like to see.
+* **Want to contribute code?** Fork the relevant [component](#components-) repo,
+  make your change, and open a pull request. For build changes, see the
+  [build docs](./build/README.md) above.
+* **Want to help translate?** Localization improvements are always appreciated —
+  see the [dictionaries](https://github.com/Euro-Office/dictionaries) repo and
+  the editors' interface translations.
+
+Please keep contributions compatible with the project's AGPL v3 license.
 
 ## License 📄
 
