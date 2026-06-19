@@ -44,6 +44,8 @@
     Install build/packaging dependencies (Cygwin, MSVC v141 + Win10 SDK + ATL/MFC,
     Inno Setup, 7-Zip, and optionally Advanced Installer). Requires admin and,
     for the packaging tools, Chocolatey. Omit if you already have everything.
+    (Inno's unofficial language files are staged at packaging time, not here, so
+    they're present on CI too - which doesn't pass this switch.)
 
 .PARAMETER BuildMsi
     Also build the MSI with Advanced Installer. Off by default to match the
@@ -152,6 +154,53 @@ function Get-VsInstallPath {
             -property installationPath
     if (-not $p) { throw "No Visual Studio install with the C++ x64 toolset was found." }
     return $p
+}
+
+# Locate the Inno Setup program directory (the folder with iscc.exe and its
+# Languages\ subfolder). Prefer a real install (it carries the compiler support
+# files) over a Chocolatey shim, then any iscc.exe on PATH, then -InnoRoot.
+# Returns $null if none found. Used by both the dependency install (to stage
+# language files) and the packaging step (to set INNOPATH).
+function Get-InnoRoot([string]$Fallback) {
+    $isccItem = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*','C:\Program Files\Inno Setup*' `
+                    -Recurse -Filter iscc.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($isccItem) { return Split-Path $isccItem.FullName }
+    $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
+    if ($iscc) { return Split-Path $iscc.Source }
+    if ($Fallback -and (Test-Path (Join-Path $Fallback 'iscc.exe'))) { return $Fallback }
+    return $null
+}
+
+# Stage jrsoftware's "unofficial" Inno translations (Greek, etc.) that
+# common.iss references but that ship in NO stock Inno install - they live in a
+# separate translations collection. This is a PACKAGING INPUT (like the
+# vc_redist pre-stage), not a heavy tool install, so it must run on every
+# packaging build regardless of -InstallDeps - which is why it's called from the
+# packaging step, not gated behind -InstallDeps (CI doesn't pass that). It's
+# idempotent (skips files already present). It writes into the Inno install's
+# Languages dir, so it needs write access there: fine on CI (admin); a plain
+# local packaging run may need elevation.
+function Sync-InnoLanguages([string]$LanguagesDir) {
+    if (-not (Test-Path $LanguagesDir)) {
+        Write-Warning "Inno Languages dir not found ($LanguagesDir) - skipping unofficial language staging."
+        return
+    }
+    # Pin $issTag to the tag matching your Inno version to avoid message-version
+    # mismatches (e.g. 'is-6_7_1'); 'main' = latest.
+    $issTag  = 'main'
+    $apiUrl  = "https://api.github.com/repos/jrsoftware/issrc/contents/Files/Languages/Unofficial?ref=$issTag"
+    $headers = @{ 'User-Agent' = 'eo-build' }
+    # Authenticate the API call when a token is available (CI) so the single
+    # contents listing doesn't trip the 60/hr anonymous limit on shared runner IPs.
+    if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
+    $unofficial = Invoke-RestMethod -Uri $apiUrl -Headers $headers
+    foreach ($f in ($unofficial | Where-Object { $_.name -match '\.islu?$' })) {
+        $langDest = Join-Path $LanguagesDir $f.name
+        if (-not (Test-Path $langDest)) {
+            Invoke-WebRequest -Uri $f.download_url -OutFile $langDest
+            Write-Host "Staged unofficial language: $($f.name)"
+        }
+    }
 }
 
 # Run vcvars in a child cmd and import the resulting environment into THIS
@@ -414,30 +463,24 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
 
     $converter = Join-Path $InstallDir 'converter'
 
-    Copy-Item (Join-Path $RepoRoot 'core\Common\msvc\converter.manifest') (Join-Path $converter 'converter.manifest')     -Force
+    # Deploy the SxS assembly manifest that makes converter\ a private "converter"
+    # assembly. graphics.dll/kernel.dll carry an embedded dependency on it, so
+    # without this the converter tools (and the app) fail to launch with
+    # 0xC0150002 (STATUS_SXS_CANT_GEN_ACTCTX).
+    Copy-Item (Join-Path $RepoRoot 'core\Common\msvc\converter.manifest') `
+              (Join-Path $converter 'converter.manifest') -Force
 
     # ─────────── 9b. generate fonts + slide-theme thumbnails ────────────────
-    # allfontsgen builds AllFonts.js + font_selection.bin from the installed
-    # and core fonts; allthemesgen then uses AllFonts.js to render the slide-
-    # theme thumbnails. Order matters - themes consume the fonts output - and
-    # both tools are deleted afterward so they don't ship in the package.
+    # allfontsgen builds the native AllFonts.js + font_selection.bin (in
+    # converter\) AND the web AllFonts.js that doctrenderer loads via
+    # DoctRenderer.config (editors\sdkjs\common\AllFonts.js). The web variant is
+    # only emitted when --output-web is set - omit it and the file is silently
+    # skipped, which makes allthemesgen's doctrenderer fault on first run.
+    # allthemesgen then renders the slide-theme thumbnails through doctrenderer.
+    # The generators run as native exes from converter\ and launch correctly
+    # because step 9 deployed converter.manifest. Both tools are deleted
+    # afterward so they don't ship in the package.
     Write-Step "9b. Generate fonts and theme thumbnails"
-
-    # The generators are native exes that must LAUNCH on this host. Windows
-    # refused to start allfontsgen with exit -1072365566 = 0xC0150002
-    # (STATUS_SXS_CANT_GEN_ACTCTX) - a side-by-side/activation-context failure,
-    # almost always a missing VC++ runtime. Install it on the build host. (This
-    # is the runtime needed to RUN the tool here, separate from the vc_redist
-    # copy bundled into the installer later. Needs admin: fine on CI; run
-    # elevated locally.)
-    $vcHost = Join-Path $env:TEMP "vc_redist.$Arch.exe"
-    if (-not (Test-Path $vcHost)) {
-        Invoke-WebRequest "https://aka.ms/vs/17/release/vc_redist.$Arch.exe" -OutFile $vcHost
-    }
-    $vcProc = Start-Process -FilePath $vcHost -ArgumentList '/install','/quiet','/norestart' -Wait -PassThru
-    if ($vcProc.ExitCode -notin @(0, 1638, 3010)) {
-        Write-Warning "vc_redist install returned $($vcProc.ExitCode); continuing."
-    }
 
     & "$converter\allfontsgen.exe" `
         --use-system=1 `
@@ -449,24 +492,14 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
         "--selection=$converter\font_selection.bin"
     $genExit = $LASTEXITCODE
 
-    # allfontsgen normally exits 0 even on logical failure, so a nonzero code
-    # here means a LAUNCH failure (e.g. 0xC0150002). Surface the real cause:
-    #  - the Windows SideBySide log names the assembly that couldn't be resolved
-    #  - dumpbin /dependents shows whether it imports a NON-redistributable
-    #    DEBUG CRT (VCRUNTIME140D.dll / MSVCP140D.dll / ucrtbased.dll) - which
-    #    the release redist can't satisfy and would mean the tool was built
-    #    Debug rather than Release.
-    if ($genExit -ne 0 -or -not (Test-Path "$converter\AllFonts.js")) {
-        Write-Host "::group::allfontsgen diagnostics (exit $genExit / 0x$('{0:X8}' -f $genExit))"
-        try {
-            Get-WinEvent -LogName Application -MaxEvents 50 -ErrorAction Stop |
-                Where-Object { $_.ProviderName -match 'SideBySide' } |
-                Select-Object -First 5 | Format-List TimeCreated, Message
-        } catch { Write-Host "No SideBySide events found: $($_.Exception.Message)" }
-        $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
-        if ($dumpbin) { & $dumpbin.Source /dependents "$converter\allfontsgen.exe" }
-        Write-Host "::endgroup::"
-        throw "allfontsgen failed (exit $genExit / 0x$('{0:X8}' -f $genExit))."
+    # allfontsgen can exit 0 even when it wrote nothing, so verify the outputs
+    # exist rather than trusting the exit code: both the native AllFonts.js and
+    # the web one doctrenderer needs. Checking the web file guards against
+    # regressing the --output-web omission that silently drops it.
+    if ($genExit -ne 0 -or
+        -not (Test-Path "$converter\AllFonts.js") -or
+        -not (Test-Path "$InstallDir\editors\sdkjs\common\AllFonts.js")) {
+        throw "allfontsgen failed (exit $genExit) or did not produce AllFonts.js (native + web)."
     }
 
     & "$converter\allthemesgen.exe" `
@@ -500,24 +533,17 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
             Assert-LastExit "make_zip.ps1"
 
             Write-Step "11b. Build Inno installer (make_inno.ps1)"
-            # INNOPATH must point at the Inno Setup program directory. Prefer
-            # the real install dir (it carries the compiler's support files)
-            # over a Chocolatey shim, then any iscc.exe on PATH, then -InnoRoot.
-            $isccItem = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*','C:\Program Files\Inno Setup*' `
-                            -Recurse -Filter iscc.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($isccItem) {
-                $env:INNOPATH = Split-Path $isccItem.FullName
-            } else {
-                $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
-                if ($iscc) {
-                    $env:INNOPATH = Split-Path $iscc.Source
-                } elseif (Test-Path (Join-Path $InnoRoot 'iscc.exe')) {
-                    $env:INNOPATH = $InnoRoot
-                } else {
-                    throw "Inno Setup (iscc.exe) not found. Install it or pass -InnoRoot."
-                }
+            # INNOPATH must point at the Inno Setup program directory. The
+            # unofficial language files it relies on are staged during -InstallDeps.
+            $env:INNOPATH = Get-InnoRoot $InnoRoot
+            if (-not $env:INNOPATH) {
+                throw "Inno Setup (iscc.exe) not found. Install it (run with -InstallDeps) or pass -InnoRoot."
             }
             Write-Host "INNOPATH=$env:INNOPATH"
+
+            # common.iss references jrsoftware's unofficial translations, which
+            # ship in no stock Inno install - stage them now (idempotent).
+            Sync-InnoLanguages (Join-Path $env:INNOPATH 'Languages')
 
             # make_inno.ps1 bundles the VC++ redistributable, fetching it at
             # package time via WebClient from aka.ms (which failed on the
@@ -545,30 +571,6 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
                 if (-not $got) { throw "Could not obtain a valid vc_redist.$Arch.exe after 5 attempts." }
             }
             Write-Host "VCRedist staged: $((Get-Item $vcRedist).VersionInfo.ProductVersion)"
-
-            # common.iss's [Languages] section also references some "unofficial"
-            # Inno translations (Greek, and likely others) that ship in NO stock
-            # Inno install of any version - they live in jrsoftware's separate
-            # translations collection. Stage the full unofficial set into the
-            # compiler's Languages folder so every "compiler:Languages\*.isl"
-            # reference resolves. NB: this writes into the Inno install dir, so
-            # it needs write access there - fine on the CI runner (admin); run
-            # elevated locally, or vendor the .isl files in your fork instead.
-            $innoLangs = Join-Path $env:INNOPATH 'Languages'
-            if (Test-Path $innoLangs) {
-                # Pin $issTag to the tag matching your Inno version to avoid
-                # message-version mismatches (e.g. 'is-6_7_1'); 'main' = latest.
-                $issTag = 'main'
-                $apiUrl = "https://api.github.com/repos/jrsoftware/issrc/contents/Files/Languages/Unofficial?ref=$issTag"
-                $unofficial = Invoke-RestMethod -Uri $apiUrl -Headers @{ 'User-Agent' = 'eo-build' }
-                foreach ($f in ($unofficial | Where-Object { $_.name -match '\.islu?$' })) {
-                    $dest = Join-Path $innoLangs $f.name
-                    if (-not (Test-Path $dest)) {
-                        Invoke-WebRequest -Uri $f.download_url -OutFile $dest
-                        Write-Host "Staged unofficial language: $($f.name)"
-                    }
-                }
-            }
 
             .\make_inno.ps1 -Version $VersionFull -Arch $Arch -Target $Target
             Assert-LastExit "make_inno.ps1"
