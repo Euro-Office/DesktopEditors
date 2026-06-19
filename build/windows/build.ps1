@@ -444,6 +444,8 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
         "--input=$InstallDir\fonts" `
         "--input=$RepoRoot\core-fonts" `
         "--allfonts=$converter\AllFonts.js" `
+        "--allfonts-web=$InstallDir\editors\sdkjs\common\AllFonts.js" `
+        "--output-web=$InstallDir\editors\fonts" `
         "--selection=$converter\font_selection.bin"
     $genExit = $LASTEXITCODE
 
