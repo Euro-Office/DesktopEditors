@@ -412,13 +412,16 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
     if ($rc -ge 8) { throw "robocopy overlay failed (exit $rc)." }
     $global:LASTEXITCODE = 0
 
+    $converter = Join-Path $InstallDir 'converter'
+
+    Copy-Item (Join-Path $RepoRoot 'core\Common\msvc\converter.manifest') (Join-Path $converter 'converter.manifest')     -Force
+
     # ─────────── 9b. generate fonts + slide-theme thumbnails ────────────────
     # allfontsgen builds AllFonts.js + font_selection.bin from the installed
     # and core fonts; allthemesgen then uses AllFonts.js to render the slide-
     # theme thumbnails. Order matters - themes consume the fonts output - and
     # both tools are deleted afterward so they don't ship in the package.
     Write-Step "9b. Generate fonts and theme thumbnails"
-    $converter = Join-Path $InstallDir 'converter'
 
     # The generators are native exes that must LAUNCH on this host. Windows
     # refused to start allfontsgen with exit -1072365566 = 0xC0150002
