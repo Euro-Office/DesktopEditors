@@ -173,9 +173,14 @@ jobs:
             common
 
   build-windows:
-    runs-on: windows-2022
+    runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
     needs: build-common
-
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - arm64
     env:
       PYTHONUTF8: "1"
       NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
@@ -273,7 +278,7 @@ jobs:
 
 
   build-linux:
-    runs-on: 'ubuntu-latest'
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     needs: build-common
     permissions:
       contents: write
@@ -281,6 +286,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        arch:
+          - amd64
+          - arm64
         brand:
           - name: euro-office
             extra_bake_files: ""
