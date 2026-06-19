@@ -93,8 +93,8 @@ target "core-base" {
   dockerfile = "./core/.docker/core.bake.Dockerfile"
   target     = "core-base"
   tags       = ["${REGISTRY}/core-base:${TAG}"]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/core-base"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/core-base,mode=max"]
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/core-base"]
+  cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/core-base,mode=max"]
 }
 
 target "core-wasm" {
@@ -102,8 +102,8 @@ target "core-wasm" {
   context    = ".."
   dockerfile = "./core/.docker/core-wasm.bake.Dockerfile"
   tags       = ["${REGISTRY}/core-wasm:${TAG}"]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/core-wasm"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/core-wasm,mode=max"]
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/core-wasm"]
+  cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/core-wasm,mode=max"]
 }
 
 target "desktop-js" {
@@ -111,8 +111,8 @@ target "desktop-js" {
   context    = ".."
   dockerfile = "./desktop-apps/.docker/desktop-js.bake.Dockerfile"
   tags       = ["${REGISTRY}/desktop-js:${TAG}"]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-js"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/desktop-js,mode=max"]
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/desktop-js"]
+  cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/desktop-js,mode=max"]
 }
 
 target "sdkjs-desktop" {
@@ -121,8 +121,8 @@ target "sdkjs-desktop" {
   dockerfile = "./sdkjs/.docker/sdkjs.bake.Dockerfile"
   tags       = ["${REGISTRY}/sdkjs-desktop:${TAG}"]
   target     = "sdkjs-desktop"
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/sdkjs-desktop"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/sdkjs-desktop,mode=max"]
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/sdkjs-desktop"]
+  cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/sdkjs-desktop,mode=max"]
   contexts = {
     core-wasm    = "target:core-wasm"
   }
@@ -133,8 +133,8 @@ target "web-apps" {
   context    = ".."
   dockerfile = "./web-apps/.docker/web-apps.bake.Dockerfile"
   tags       = ["${REGISTRY}/web-apps:${TAG}"]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/web-apps"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/web-apps,mode=max"]
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/web-apps"]
+  cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/web-apps,mode=max"]
 }
 
 # ──────────────────────────────────────────────
@@ -153,8 +153,8 @@ target "desktop-builder" {
     sdkjs-desktop = "target:sdkjs-desktop"
     web-apps      = "target:web-apps"
   }
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-builder"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/desktop-builder,mode=max"]
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/desktop-builder"]
+  cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/desktop-builder,mode=max"]
 }
 
 # ──────────────────────────────────────────────
@@ -178,7 +178,7 @@ target "desktop-export" {
   # Export the filesystem directly to a local directory instead of an image
   output = ["type=local,dest=./deploy/desktop"]
 
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-builder"]  # reuses builder cache
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/desktop-builder"]  # reuses builder cache
 }
 
 target "packages" {
@@ -194,5 +194,5 @@ target "packages" {
   # Export the filesystem directly to a local directory instead of an image
   output = ["type=local,dest=./deploy/packages"]
 
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/packages"]  # reuses builder cache
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/packages"]  # reuses builder cache
 }
