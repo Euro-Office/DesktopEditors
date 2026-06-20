@@ -151,7 +151,7 @@ jobs:
             desktop-common.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache
             desktop-common.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache,mode=max
             desktop-common.tags=${{format('{0}/{1}:{2}', env.REGISTRY, matrix.brand.image_name, steps.meta.outputs.sha_short)}}
-            desktop-common.output=type=image,push=true
+            desktop-common.output=./common
         env:
           REGISTRY: ${{ env.REGISTRY }}
           PRODUCT_VERSION: ${{ steps.meta.outputs.product_version }}
@@ -161,11 +161,6 @@ jobs:
           NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
           NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
 
-      - name: Extract files from image
-        run: |
-          docker create --name tmp ${{ env.REGISTRY }}/${{ matrix.brand.image_name }}:${{ steps.meta.outputs.sha_short }} true
-          docker cp tmp:/ ./common
-          docker rm tmp
       - uses: actions/upload-artifact@v4
         with:
           name: common-files
@@ -314,6 +309,11 @@ jobs:
           path: build/brands/nextcloud-office-brand
           token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: common-files
+          path: ./common
+
       - name: Debug workspace
         run: |
           echo "workspace: ${{ github.workspace }}"
@@ -395,6 +395,7 @@ jobs:
             desktop-linux.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache
             desktop-linux.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache,mode=max
             desktop-linux.tags=
+            desktop-linux.contexts.desktop-common=./common
             packages.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}packages-buildcache
             packages.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}packages-buildcache,mode=max
             packages.tags=

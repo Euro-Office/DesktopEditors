@@ -152,7 +152,7 @@ target "desktop-common" {
   context    = ".."
   dockerfile = "./build/.docker/desktop-composer.bake.Dockerfile"
   target     = "desktop-common"       # points to the FROM scratch stage
-  tags       = ["${REGISTRY}/desktop-common:${GIT_COMMIT}"]
+  tags       = ["${REGISTRY}/desktop-common:${TAG}"]
   contexts = {
     desktop-js      = "target:desktop-js"       #   even in stages before desktop-common
     sdkjs-desktop   = "target:sdkjs-desktop"
@@ -160,7 +160,7 @@ target "desktop-common" {
   }
 
   # Export the filesystem directly to a local directory instead of an image
-  output = ["type=docker"]
+  output = ["type=local,dest=./deploy/common"]
 
   cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-common"]  # reuses builder cache
 }
