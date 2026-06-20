@@ -110,7 +110,7 @@ target "desktop-linux" {
   target     = "desktop-linux"
   tags       = ["${REGISTRY}/desktop-linux:${TAG}"]
   contexts = {
-    desktop-common  = "docker-image://${REGISTRY}/desktop-common:${GIT_COMMIT}"
+    desktop-common  = "../deploy/common"
     core-base       = "target:core-base"
   }
   secret = [
