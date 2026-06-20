@@ -165,7 +165,7 @@ jobs:
         with:
           name: common-files
           path: |
-            common
+            ./build/common
 
   build-windows:
     runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
@@ -312,7 +312,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: common-files
-          path: ./common
+          path: ./build/linux/common
 
       - name: Debug workspace
         run: |
