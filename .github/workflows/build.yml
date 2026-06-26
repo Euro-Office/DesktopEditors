@@ -1,0 +1,408 @@
+name: Build (Windows/Linux)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+
+env:
+  REGISTRY: ghcr.io/euro-office
+  CACHE_IMAGE_NAME: desktopeditors-build-cache
+  PRODUCT_VERSION: 9.3.1
+  BUILD_NUMBER: dev.1
+  BUILD_ROOT: /package
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────
+  # BUILD
+  #
+  # Single job that builds the full target graph in one bake
+  # invocation per arch × brand. Because develop depends on
+  # docker which depends on packages, bake resolves the shared
+  # graph and never rebuilds a layer twice.
+  #
+  # Pushing per target:
+  #   docker   → pushed on default branch (:nightly) and git tags (:latest)
+  #   develop  → pushed on default branch only (:latest-dev)
+  #   packages → never pushed; exported to local filesystem for release upload
+  #              (euro-office → GitHub Release, nextcloud-office → SSH)
+  # ─────────────────────────────────────────────────────────────
+  build-common:
+    runs-on: 'ubuntu-latest'
+    permissions:
+      contents: write
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        brand:
+          - name: euro-office
+            image_name: desktop-common
+            extra_bake_files: ""
+            extra_targets: ""
+            cache_prefix: ""
+          #- name: nextcloud-office
+          #  image_name: no-desktop-common
+          #  extra_bake_files: "./brands/nextcloud-office-brand/brand-server.hcl"
+          #  extra_targets: "brand-icons,"
+          #  cache_prefix: "nextcloud-office-"
+
+    steps:
+      - name: Checkout fork repository (with submodules)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: .
+          submodules: recursive
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Checkout nextcloud-office-brand repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: Euro-Office/nextcloud-office-brand
+          path: build/brands/nextcloud-office-brand
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Debug workspace
+        run: |
+          echo "workspace: ${{ github.workspace }}"
+          ls -la "${{ github.workspace }}"
+          ls -la "${{ github.workspace }}/build" || echo "build/ MISSING"
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - uses: actions/cache@v4
+        id: wasm-cache
+        with:
+          path: |
+            wasm-ccache
+            wasm-em-cache
+          key: ${{ runner.os }}-wasm-${{ hashFiles('core/**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-
+
+      - uses: reproducible-containers/buildkit-cache-dance@v3.4.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          cache-map: |
+            {
+              "wasm-ccache":   { "target": "/ccache",   "id": "wasm-ccache" },
+              "wasm-em-cache": { "target": "/em-cache", "id": "wasm-em-cache" }
+            }
+          skip-extraction: ${{ steps.wasm-cache.outputs.cache-hit }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags and push flags
+        id: meta
+        run: |
+          REF_NAME=$(echo '${{ github.ref_name }}' | tr '/' '-')
+          echo "ref_name=${REF_NAME}" >> $GITHUB_OUTPUT
+
+          echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+          # Parse PRODUCT_VERSION / BUILD_NUMBER from tag of the form v${PRODUCT_VERSION}-${BUILD_NUMBER}
+          # (e.g. v9.3.1-beta.1, v9.3.1-stable.1). Fall back to env defaults otherwise.
+          if [[ "$IS_TAG" == "true" && "${{ github.ref_name }}" =~ ^v([^-]+)-(.+)$ ]]; then
+            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+            echo "build_number=${BASH_REMATCH[2]}"    >> $GITHUB_OUTPUT
+          else
+            echo "product_version=${{ env.PRODUCT_VERSION }}" >> $GITHUB_OUTPUT
+            echo "build_number=${{ env.BUILD_NUMBER }}"       >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build all targets (packages → docker → develop)
+        uses: docker/bake-action@4a9a8d494466d37134e2bfca2d3a8de8fb2681ad # v5.13.0
+        with:
+          workdir: ./build
+          # For nextcloud-office, brand-server.hcl is appended; empty lines are
+          # filtered by bake-action so euro-office sees only the base file.
+          files: |
+            ./docker-bake.hcl
+          # extra_targets is either "" (euro-office) or "brand-icons," so the
+          # comma-joined target list resolves correctly for both.
+          targets: desktop-common
+          # push=false here; per-target pushing is controlled via tags below.
+          # Targets with empty tags= are not pushed regardless of this flag.
+          push: false
+          set: |
+            core-base.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache
+            core-base.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache,mode=max
+            core-base.tags=
+            core-wasm.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-wasm-buildcache
+            core-wasm.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-wasm-buildcache,mode=max
+            core-wasm.tags=
+            sdkjs-desktop.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}sdkjs-desktop-buildcache
+            sdkjs-desktop.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}sdkjs-desktop-buildcache,mode=max
+            sdkjs-desktop.tags=
+            desktop-js.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-js-buildcache
+            desktop-js.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-js-buildcache,mode=max
+            desktop-js.tags=
+            web-apps.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}web-apps-buildcache
+            web-apps.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}web-apps-buildcache,mode=max
+            web-apps.tags=
+            desktop-common.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache
+            desktop-common.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache,mode=max
+            desktop-common.tags=${{format('{0}/{1}:{2}', env.REGISTRY, matrix.brand.image_name, steps.meta.outputs.sha_short)}}
+            desktop-common.output=type=image,push=true
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          PRODUCT_VERSION: ${{ steps.meta.outputs.product_version }}
+          BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
+          BUILD_ROOT: ${{ env.BUILD_ROOT }}
+          NUGET_CACHE: local
+          NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
+          NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
+
+      - name: Extract files from image
+        run: |
+          docker create --name tmp ${{ env.REGISTRY }}/${{ matrix.brand.image_name }}:${{ steps.meta.outputs.sha_short }} true
+          docker cp tmp:/ ./common
+          docker rm tmp
+      - uses: actions/upload-artifact@v4
+        with:
+          name: common-files
+          path: |
+            common
+
+  build-windows:
+    runs-on: windows-2022
+    needs: build-common
+
+    env:
+      PYTHONUTF8: "1"
+      NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
+      NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
+      SCCACHE_GHA_ENABLED: "true"
+
+    steps:
+      # ---- orchestration / environment setup (stays in the workflow) ---- #
+      - name: Checkout fork repository (with submodules)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: .
+          submodules: recursive
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Checkout nextcloud-office-brand repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: Euro-Office/nextcloud-office-brand
+          path: build/brands/nextcloud-office-brand
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: common-files
+          path: .\common
+
+      # Install Cygwin WITHOUT touching PATH (the script does the PATH ordering).
+      # add-to-path:false stops the action from prepending C:\cygwin\bin and
+      # shadowing the native perl/python/git/cmake.
+      - name: Install Cygwin
+        uses: cygwin/cygwin-install-action@v4
+        with:
+          install-dir: 'C:\cygwin64'
+          add-to-path: false
+          packages: >-
+            automake
+            cmake
+            make
+            git
+            python3
+            python3-devel
+
+      - name: Install Windows SDK, v141 toolset and ATL
+        shell: pwsh
+        run: |
+          $vsWhere     = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          $installPath = & $vsWhere -latest -products * -property installationPath
+          & $vsInstaller modify `
+            --installPath $installPath `
+            --add Microsoft.VisualStudio.Component.Windows10SDK.19041 `
+            --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 `
+            --add Microsoft.VisualStudio.Component.VC.v141.ATL `
+            --add Microsoft.VisualStudio.Component.VC.v141.MFC `
+            --quiet --norestart --force
+          if ($LASTEXITCODE -notin @(0, 3010)) {
+            Write-Warning "vs_installer returned $LASTEXITCODE — components may already be installed, continuing."
+          }
+
+
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.10   # puts sccache on PATH + exports the cache tokens
+
+      - name: Install Ninja
+        shell: pwsh
+        run: choco install ninja -y --no-progress      # usually already on windows-2022; harmless if so
+
+      - name: Set up vcpkg
+        uses: lukka/run-vcpkg@v11   # exports VCPKG_ROOT for the script
+
+      # ---- build + package (single source of truth: the script) ---- #
+      # Covers: copy login assets, deterministic PATH (native > Cygwin > rest),
+      # tool verification, vcvars + CMake configure/build/install, robocopy
+      # overlay of common, and make.ps1 / make_zip.ps1 / make_inno.ps1.
+      - name: Build & package
+        shell: pwsh
+        run: |
+          .\build\windows\build.ps1 `
+            -CommonDir      "${{ github.workspace }}\common" `
+            -ProductVersion "${{ env.PRODUCT_VERSION }}" `
+            -Arch           x64 `
+            -Target         standalone `
+            -CompanyName    Euro-Office `
+            -ProductName    DesktopEditors
+
+      # ---- collect outputs (stays in the workflow) ---- #
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-packages
+          path: |
+            desktop-apps/package/zip/*.zip
+            desktop-apps/package/inno/*.exe
+            desktop-apps/package/advinst/*.msi
+
+
+  build-linux:
+    runs-on: 'ubuntu-latest'
+    needs: build-common
+    permissions:
+      contents: write
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        brand:
+          - name: euro-office
+            extra_bake_files: ""
+            extra_targets: ""
+            cache_prefix: ""
+          #- name: nextcloud-office
+          #  extra_bake_files: "./brands/nextcloud-office-brand/brand-server.hcl"
+          #  extra_targets: "brand-icons,"
+          #  cache_prefix: "nextcloud-office-"
+
+    steps:
+      - name: Checkout fork repository (with submodules)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: .
+          submodules: recursive
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Checkout nextcloud-office-brand repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: Euro-Office/nextcloud-office-brand
+          path: build/brands/nextcloud-office-brand
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Debug workspace
+        run: |
+          echo "workspace: ${{ github.workspace }}"
+          ls -la "${{ github.workspace }}"
+          ls -la "${{ github.workspace }}/build" || echo "build/ MISSING"
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Restore desktop build caches
+        uses: actions/cache@v4
+        id: desktop-cache
+        with:
+          path: |
+            ccache
+            nuget-cache
+          key: ${{ runner.os }}-desktop-${{ hashFiles('core/vcpkg.json', 'desktop-apps/win-linux/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-desktop-
+
+      - name: Inject caches into BuildKit
+        uses: reproducible-containers/buildkit-cache-dance@v3.4.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          cache-map: |
+            {
+              "ccache": { "target": "/ccache", "id": "ccache" },
+              "nuget-cache": { "target": "/nuget-cache", "id": "nuget-cache" }
+            }
+          skip-extraction: ${{ steps.desktop-cache.outputs.cache-hit }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags and push flags
+        id: meta
+        run: |
+          REF_NAME=$(echo '${{ github.ref_name }}' | tr '/' '-')
+          echo "ref_name=${REF_NAME}" >> $GITHUB_OUTPUT
+
+          echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+          # Parse PRODUCT_VERSION / BUILD_NUMBER from tag of the form v${PRODUCT_VERSION}-${BUILD_NUMBER}
+          # (e.g. v9.3.1-beta.1, v9.3.1-stable.1). Fall back to env defaults otherwise.
+          if [[ "$IS_TAG" == "true" && "${{ github.ref_name }}" =~ ^v([^-]+)-(.+)$ ]]; then
+            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+            echo "build_number=${BASH_REMATCH[2]}"    >> $GITHUB_OUTPUT
+          else
+            echo "product_version=${{ env.PRODUCT_VERSION }}" >> $GITHUB_OUTPUT
+            echo "build_number=${{ env.BUILD_NUMBER }}"       >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build all targets (packages → docker → develop)
+        uses: docker/bake-action@4a9a8d494466d37134e2bfca2d3a8de8fb2681ad # v5.13.0
+        with:
+          workdir: ./build/linux
+          # For nextcloud-office, brand-server.hcl is appended; empty lines are
+          # filtered by bake-action so euro-office sees only the base file.
+          files: |
+            ./docker-bake.hcl
+          # extra_targets is either "" (euro-office) or "brand-icons," so the
+          # comma-joined target list resolves correctly for both.
+          targets: packages
+          # push=false here; per-target pushing is controlled via tags below.
+          # Targets with empty tags= are not pushed regardless of this flag.
+          push: false
+          set: |
+            core-base.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache
+            core-base.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache,mode=max
+            core-base.tags=
+            third-party.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}third-party-buildcache
+            third-party.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}third-party-buildcache,mode=max
+            third-party.tags=
+            desktop-linux.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache
+            desktop-linux.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache,mode=max
+            desktop-linux.tags=
+            packages.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}packages-buildcache
+            packages.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}packages-buildcache,mode=max
+            packages.tags=
+        env:
+          GIT_COMMIT: ${{ steps.meta.outputs.sha_short }}
+          REGISTRY: ${{ env.REGISTRY }}
+          PRODUCT_VERSION: ${{ steps.meta.outputs.product_version }}
+          BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
+          BUILD_ROOT: ${{ env.BUILD_ROOT }}
+          NUGET_CACHE: local
+          NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
+          NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            build/linux/deploy/packages/*.deb
+            build/linux/deploy/packages/*.rpm
