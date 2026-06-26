@@ -1,0 +1,66 @@
+name: Build Linux Packages
+
+on:
+  push:
+    branches: [ "feature/linux-packaging", "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: # Allows you to run this workflow manually from the Actions tab
+
+jobs:
+  build-ubuntu:
+    name: Build ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [deb, rpm, flatpak]
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build Package
+        run: ./build_linux_packages.sh --${{ matrix.package }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: euro-office-package-${{ matrix.package }}
+          path: releases/
+          retention-days: 5
+
+  build-arch:
+    name: Build AUR (pkg.tar.zst)
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Arch Linux builder user
+        # makepkg cannot be run as the root user. Since Docker runs as root by default,
+        # we need to install sudo/base-devel, create a non-root 'builder' user, and give it permissions.
+        run: |
+          pacman -Syu --noconfirm git sudo base-devel
+          useradd -m -G wheel builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder $GITHUB_WORKSPACE
+          su - builder -c "git config --global --add safe.directory $GITHUB_WORKSPACE"
+
+      - name: Build AUR Package
+        # Run our script as the non-root 'builder' user
+        run: su - builder -c "cd $GITHUB_WORKSPACE && ./build_linux_packages.sh --aur"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: euro-office-package-aur
+          path: releases/
+          retention-days: 5
