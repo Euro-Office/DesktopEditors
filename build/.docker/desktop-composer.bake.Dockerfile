@@ -38,3 +38,6 @@ FROM scratch AS desktop-common
 
     # Create sdkjs-plugins dir in scratch image
     WORKDIR /editors/sdkjs-plugins
+
+FROM scratch AS desktop-export
+    COPY --from=desktop-builder /desktopeditors /

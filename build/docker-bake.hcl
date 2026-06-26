@@ -167,14 +167,16 @@ target "desktop-builder" {
 
 
 ### Compose files that are common to all operating systems
-target "desktop-common" {
+target "desktop-export" {
   inherits   = ["_common"]
   context    = ".."
   dockerfile = "./build/.docker/desktop-composer.bake.Dockerfile"
-  target     = "desktop-common"       # points to the FROM scratch stage
-  tags       = ["${REGISTRY}/desktop-common:${GIT_COMMIT}"]
+  target     = "desktop-export"       # points to the FROM scratch stage
+  tags       = ["${REGISTRY}/desktop-export:${GIT_COMMIT}"]
   contexts = {
-    desktop-js      = "target:desktop-js"       #   even in stages before desktop-common
+    core-base       = "target:core-base"
+    desktop-builder = "target:desktop-builder"
+    desktop-js      = "target:desktop-js"
     sdkjs-desktop   = "target:sdkjs-desktop"
     web-apps        = "target:web-apps"
   }
