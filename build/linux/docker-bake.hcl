@@ -91,6 +91,9 @@ target "_common" {
 
 target "core-base" {
   inherits   = ["_common"]
+  args = {
+    PRODUCT = "desktop"
+  }
   context    = "../.."
   dockerfile = "./core/.docker/core.bake.Dockerfile"
   target     = "core-base"
