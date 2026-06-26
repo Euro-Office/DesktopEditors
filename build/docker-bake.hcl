@@ -205,6 +205,12 @@ target "desktop-export" {
   tags       = ["${REGISTRY}/desktop-export:${GIT_COMMIT}"]
   contexts = {
     desktop-builder = "target:desktop-builder"
+    core-base     = "target:core-base"
+    desktop-js    = "target:desktop-js"
+    sdkjs-desktop = "target:sdkjs-desktop"
+    web-apps      = "target:web-apps"
+    desktop-common = "target:desktop-common"
+    third-party   = "target:third-party"
   }
   output = ["type=docker"]
 }
