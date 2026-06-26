@@ -151,7 +151,7 @@ jobs:
             desktop-common.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache
             desktop-common.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache,mode=max
             desktop-common.tags=${{format('{0}/{1}:{2}', env.REGISTRY, matrix.brand.image_name, steps.meta.outputs.sha_short)}}
-            desktop-common.output=./common
+            desktop-common.output=type=tar,dest=./common.tar
         env:
           REGISTRY: ${{ env.REGISTRY }}
           PRODUCT_VERSION: ${{ steps.meta.outputs.product_version }}
@@ -164,8 +164,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: common-files
-          path: |
-            ./build/common
+          path: ./build/common.tar          # was ./build/common
+          compression-level: 0
 
   build-windows:
     runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
@@ -201,7 +201,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: common-files
-          path: .\common
+          path: .                            # lands as .\common.tar
+
+      - name: Extract common
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .\common | Out-Null
+          tar -xf .\common.tar -C .\common   # bsdtar ships with windows-2022/arm runners
 
       # Install Cygwin WITHOUT touching PATH (the script does the PATH ordering).
       # add-to-path:false stops the action from prepending C:\cygwin\bin and
@@ -312,7 +318,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: common-files
-          path: ./build/linux/common
+          path: ./build/linux
+
+      - name: Extract common
+        run: |
+          mkdir -p ./build/linux/common
+          tar -xf ./build/linux/common.tar -C ./build/linux/common
 
       - name: Debug workspace
         run: |
