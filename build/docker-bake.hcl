@@ -145,6 +145,16 @@ target "web-apps" {
 # BUILD TARGET
 # ──────────────────────────────────────────────
 
+target "third-party" {
+  inherits   = ["_common"]
+  context    = ".."
+  dockerfile = "./core/.docker/third-party.bake.Dockerfile"
+  target     = "third-party-builder"
+  tags       = ["${REGISTRY}/third-party:${TAG}"]
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/third-party"]
+  cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/third-party,mode=max"]
+}
+
 target "desktop-builder" {
   inherits   = ["_common"]
   context    = ".."
@@ -156,6 +166,8 @@ target "desktop-builder" {
     desktop-js    = "target:desktop-js"
     sdkjs-desktop = "target:sdkjs-desktop"
     web-apps      = "target:web-apps"
+    desktop-common = "target:desktop-common"
+    third-party   = "target:third-party"
   }
   cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/desktop-builder"]
   cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/desktop-builder,mode=max"]
@@ -167,16 +179,14 @@ target "desktop-builder" {
 
 
 ### Compose files that are common to all operating systems
-target "desktop-export" {
+target "desktop-common" {
   inherits   = ["_common"]
   context    = ".."
   dockerfile = "./build/.docker/desktop-composer.bake.Dockerfile"
-  target     = "desktop-export"       # points to the FROM scratch stage
-  tags       = ["${REGISTRY}/desktop-export:${GIT_COMMIT}"]
+  target     = "desktop-common"       # points to the FROM scratch stage
+  tags       = ["${REGISTRY}/desktop-common:${GIT_COMMIT}"]
   contexts = {
-    core-base       = "target:core-base"
-    desktop-builder = "target:desktop-builder"
-    desktop-js      = "target:desktop-js"
+    desktop-js      = "target:desktop-js"       #   even in stages before desktop-common
     sdkjs-desktop   = "target:sdkjs-desktop"
     web-apps        = "target:web-apps"
   }
@@ -185,6 +195,18 @@ target "desktop-export" {
   output = ["type=docker"]
 
   cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/desktop-builder"]  # reuses builder cache
+}
+
+target "desktop-export" {
+  inherits   = ["_common"]
+  context    = ".."
+  dockerfile = "./desktop-apps/.docker/desktop-apps.bake.Dockerfile"
+  target     = "desktop-export"
+  tags       = ["${REGISTRY}/desktop-export:${GIT_COMMIT}"]
+  contexts = {
+    desktop-builder = "target:desktop-builder"
+  }
+  output = ["type=docker"]
 }
 
 target "packages" {
