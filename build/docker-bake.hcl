@@ -66,7 +66,7 @@ group "default" {
 }
 
 group "deps" {
-  targets = ["core-base", "desktop-js", "sdkjs-desktop", "web-apps"]
+  targets = ["desktop-js", "sdkjs-desktop", "web-apps"]
 }
 
 # ──────────────────────────────────────────────
@@ -90,16 +90,6 @@ target "_common" {
 # ──────────────────────────────────────────────
 # DEPENDENCY TARGETS
 # ──────────────────────────────────────────────
-
-target "core-base" {
-  inherits   = ["_common"]
-  context    = ".."
-  dockerfile = "./core/.docker/core.bake.Dockerfile"
-  target     = "core-base"
-  tags       = ["${REGISTRY}/core-base:${TAG}"]
-  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/core-base"]
-  cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/core-base,mode=max"]
-}
 
 target "core-wasm" {
   inherits   = ["_common"]
