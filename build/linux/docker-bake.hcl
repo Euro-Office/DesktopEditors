@@ -110,7 +110,7 @@ target "desktop-linux" {
   target     = "desktop-linux"
   tags       = ["${REGISTRY}/desktop-linux:${TAG}"]
   contexts = {
-    desktop-common  = "../deploy/common"
+    desktop-common  = "oci-layout://../deploy/common:${TAG}"
     core-base       = "target:core-base"
   }
   secret = [
