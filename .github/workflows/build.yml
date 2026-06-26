@@ -225,22 +225,22 @@ jobs:
             python3
             python3-devel
 
-      - name: Install Windows SDK, v141 toolset and ATL
-        shell: pwsh
-        run: |
-          $vsWhere     = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-          $installPath = & $vsWhere -latest -products * -property installationPath
-          & $vsInstaller modify `
-            --installPath $installPath `
-            --add Microsoft.VisualStudio.Component.Windows10SDK.19041 `
-            --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 `
-            --add Microsoft.VisualStudio.Component.VC.v141.ATL `
-            --add Microsoft.VisualStudio.Component.VC.v141.MFC `
-            --quiet --norestart --force
-          if ($LASTEXITCODE -notin @(0, 3010)) {
-            Write-Warning "vs_installer returned $LASTEXITCODE — components may already be installed, continuing."
-          }
+#      - name: Install Windows SDK, v141 toolset and ATL
+#        shell: pwsh
+#        run: |
+#          $vsWhere     = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+#          $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+#          $installPath = & $vsWhere -latest -products * -property installationPath
+#          & $vsInstaller modify `
+#            --installPath $installPath `
+#            --add Microsoft.VisualStudio.Component.Windows10SDK.19041 `
+#            --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 `
+#            --add Microsoft.VisualStudio.Component.VC.v141.ATL `
+#            --add Microsoft.VisualStudio.Component.VC.v141.MFC `
+#            --quiet --norestart --force
+#          if ($LASTEXITCODE -notin @(0, 3010)) {
+#            Write-Warning "vs_installer returned $LASTEXITCODE — components may already be installed, continuing."
+#          }
 
 
       - name: Set up sccache
@@ -263,7 +263,7 @@ jobs:
           .\build\windows\build.ps1 `
             -CommonDir      "${{ github.workspace }}\common" `
             -ProductVersion "${{ env.PRODUCT_VERSION }}" `
-            -Arch           x64 `
+            -Arch           ${{ matrix.arch == 'arm64' && 'arm64' || 'x64' }}  `
             -Target         standalone `
             -CompanyName    Euro-Office `
             -ProductName    DesktopEditors
@@ -271,7 +271,7 @@ jobs:
       # ---- collect outputs (stays in the workflow) ---- #
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-packages
+          name: windows-packages-${{ matrix.arch }}
           path: |
             desktop-apps/package/zip/*.zip
             desktop-apps/package/inno/*.exe
@@ -400,9 +400,6 @@ jobs:
             core-base.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache
             core-base.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache,mode=max
             core-base.tags=
-            third-party.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}third-party-buildcache
-            third-party.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}third-party-buildcache,mode=max
-            third-party.tags=
             desktop-linux.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache
             desktop-linux.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache,mode=max
             desktop-linux.tags=
@@ -422,7 +419,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-packages
+          name: linux-packages-${{ matrix.arch }}
           path: |
             build/linux/deploy/packages/*.deb
             build/linux/deploy/packages/*.rpm
