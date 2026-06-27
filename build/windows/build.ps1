@@ -187,7 +187,7 @@ function Sync-InnoLanguages([string]$LanguagesDir) {
     }
     # Pin $issTag to the tag matching your Inno version to avoid message-version
     # mismatches (e.g. 'is-6_7_1'); 'main' = latest.
-    $issTag  = 'is-7_0_1'
+    $issTag  = 'is-6_7_1'
     $apiUrl  = "https://api.github.com/repos/jrsoftware/issrc/contents/Files/Languages/Unofficial?ref=$issTag"
     $headers = @{ 'User-Agent' = 'eo-build' }
     # Authenticate the API call when a token is available (CI) so the single
