@@ -169,9 +169,9 @@ jobs:
     runs-on: windows-2022                 # x64 host that cross-compiles to arm64
     env:
       PYTHONUTF8: "1"
-      SCCACHE_GHA_ENABLED: "true"
       DEPOT_TOOLS_WIN_TOOLCHAIN: "0"      # V8: use the locally installed VS, not Google's toolchain
-      VSCMD_ARG_TGT_ARCH: arm64
+      NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}   # required: ensure_dep uploads here
+      NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
  
     steps:
       - name: Checkout fork repository (with submodules)
@@ -199,7 +199,17 @@ jobs:
           if ($LASTEXITCODE -notin @(0, 3010)) {
             Write-Warning "vs_installer returned $LASTEXITCODE - components may already be present, continuing."
           }
- 
+
+          
+      # Sets the amd64_arm64 cross environment for all later steps, incl.
+      # VSCMD_ARG_TGT_ARCH=arm64 -- the single signal openssl, v8 and the
+      # cache tag all key off of.
+      - name: Set up arm64 cross MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
+
+
       # ASSUMPTION: build_3rdparty.py can be told to *target* arm64 while
       # running on an x64 host. If it only builds host-arch today, that's the
       # gap to close first (see notes in chat: V8 -> target_cpu="arm64";
@@ -215,7 +225,7 @@ jobs:
 
   build-windows:
     runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
-    needs: build-common
+    needs: [build-common, crosscompile-3rdparty-arm64]
     strategy:
       fail-fast: false
       matrix:
