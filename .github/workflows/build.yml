@@ -218,7 +218,7 @@ jobs:
         shell: pwsh
         run: |
           python ${{ github.workspace }}\core\Common\3dParty\build_3rdparty.py `
-            --only=v8,openssl `
+            --only=openssl `
             "${{ github.workspace }}\workdir" `
             "${{ github.workspace }}\installdir"
 
