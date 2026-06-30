@@ -1,12 +1,12 @@
 [submodule "desktop-apps"]
 	path = desktop-apps
-	url = https://github.com/pplupo/Euro-Office_desktop-apps.git
+	url = https://github.com/Euro-Office/desktop-apps.git
 [submodule "desktop-sdk"]
 	path = desktop-sdk
-	url = https://github.com/pplupo/Euro-Office_desktop-sdk.git
+	url = https://github.com/Euro-Office/desktop-sdk.git
 [submodule "core"]
 	path = core
-	url = https://github.com/pplupo/Euro-Office_core.git
+	url = https://github.com/Euro-Office/core.git
 [submodule "sdkjs"]
 	path = sdkjs
 	url = https://github.com/Euro-Office/sdkjs.git
