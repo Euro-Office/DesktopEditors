@@ -88,20 +88,6 @@ target "_common" {
 # DEPENDENCY TARGETS
 # ──────────────────────────────────────────────
 
-target "third-party" {
-  inherits   = ["_common"]
-  context    = "../.."
-  dockerfile = "./core/.docker/third-party.bake.Dockerfile"
-  target     = "third-party-builder"
-  secret = [
-    "id=nextcloud_user,env=NEXTCLOUD_USER",
-    "id=nextcloud_pass,env=NEXTCLOUD_PASS",
-  ]
-  tags       = ["${REGISTRY}/third-party:${TAG}"]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/third-party"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/third-party,mode=max"]
-}
-
 
 target "core-base" {
   inherits   = ["_common"]
@@ -126,7 +112,6 @@ target "desktop-linux" {
   contexts = {
     desktop-common  = "docker-image://${REGISTRY}/desktop-common:${GIT_COMMIT}"
     core-base       = "target:core-base"
-    third-party     = "target:third-party"
   }
   secret = [
     "id=nextcloud_user,env=NEXTCLOUD_USER",
