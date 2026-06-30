@@ -88,18 +88,8 @@ target "_common" {
 # DEPENDENCY TARGETS
 # ──────────────────────────────────────────────
 
-target "third-party" {
-  inherits   = ["_common"]
-  context    = "../.."
-  dockerfile = "./core/.docker/third-party.bake.Dockerfile"
-  target     = "third-party-builder"
-  secret = [
-    "id=nextcloud_user,env=NEXTCLOUD_USER",
-    "id=nextcloud_pass,env=NEXTCLOUD_PASS",
-  ]
-  tags       = ["${REGISTRY}/third-party:${TAG}"]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/third-party"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/third-party,mode=max"]
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/third-party"]
+  cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/third-party,mode=max"]
 }
 
 
@@ -109,8 +99,8 @@ target "core-base" {
   dockerfile = "./core/.docker/core.bake.Dockerfile"
   target     = "core-base"
   tags       = ["${REGISTRY}/core-base:${TAG}"]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/core-base"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/core-base,mode=max"]
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/core-base"]
+  cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/core-base,mode=max"]
 }
 
 # ──────────────────────────────────────────────
@@ -126,14 +116,13 @@ target "desktop-linux" {
   contexts = {
     desktop-common  = "docker-image://${REGISTRY}/desktop-common:${GIT_COMMIT}"
     core-base       = "target:core-base"
-    third-party     = "target:third-party"
   }
   secret = [
     "id=nextcloud_user,env=NEXTCLOUD_USER",
     "id=nextcloud_pass,env=NEXTCLOUD_PASS",
   ]
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-linux"]
-  cache-to   = ["type=local,dest=/tmp/${REGISTRY}/desktop-linux,mode=max"]
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/desktop-linux"]
+  cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/desktop-linux,mode=max"]
 }
 
 # ──────────────────────────────────────────────
@@ -153,5 +142,5 @@ target "packages" {
   # Export the filesystem directly to a local directory instead of an image
   output = ["type=local,dest=./deploy/packages"]
 
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/packages"]  # reuses builder cache
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/packages"]  # reuses builder cache
 }
