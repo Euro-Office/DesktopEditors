@@ -290,6 +290,11 @@ try {
         } else {
             Write-Warning "Chocolatey not found - skipping Inno Setup / 7-Zip / Advanced Installer install. Install them manually or install choco first."
         }
+
+        # 1d. aqtinstall (Qt installer) via pip.
+        Write-Host "Installing aqtinstall via pip ..."
+        python -m pip install --upgrade --break-system-packages aqtinstall
+        Assert-LastExit "pip install aqtinstall"
     }
 
     # ───────────────── 2. obtain the Linux-built common content ──────────────
@@ -307,9 +312,10 @@ try {
 
         Push-Location (Join-Path $RepoRoot 'build')
         try {
-            docker buildx bake -f ./docker-bake.hcl desktop-common `
+            docker buildx bake -f ../docker-bake.hcl desktop-common `
                 --set "desktop-common.tags=desktop-common:local" `
                 --set "desktop-common.output=type=docker"
+                --set "*.context=../.."
             Assert-LastExit "docker bake"
         } finally { Pop-Location }
 
