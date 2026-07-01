@@ -314,7 +314,7 @@ try {
         try {
             docker buildx bake -f ../docker-bake.hcl desktop-common `
                 --set "desktop-common.tags=desktop-common:local" `
-                --set "desktop-common.output=type=docker"
+                --set "desktop-common.output=type=docker" `
                 --set "*.context=../.."
             Assert-LastExit "docker bake"
         } finally { Pop-Location }
