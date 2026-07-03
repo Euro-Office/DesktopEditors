@@ -91,6 +91,9 @@ target "_common" {
 
 target "core-base" {
   inherits   = ["_common"]
+  args = {
+    PRODUCT = "desktop"
+  }
   context    = "../.."
   dockerfile = "./core/.docker/core.bake.Dockerfile"
   target     = "core-base"
@@ -110,7 +113,7 @@ target "desktop-linux" {
   target     = "desktop-linux"
   tags       = ["${REGISTRY}/desktop-linux:${TAG}"]
   contexts = {
-    desktop-common  = "docker-image://${REGISTRY}/desktop-common:${GIT_COMMIT}"
+    desktop-common  = "oci-layout://../deploy/common:${TAG}"
     core-base       = "target:core-base"
   }
   secret = [

@@ -41,7 +41,7 @@
     Linux-container mode). Slow; only needed if you can't grab the CI artifact.
 
 .PARAMETER InstallDeps
-    Install build/packaging dependencies (Cygwin, MSVC v141 + Win10 SDK + ATL/MFC,
+    Install build/packaging dependencies (Cygwin, Win10 SDK + ATL/MFC,
     Inno Setup, 7-Zip, and optionally Advanced Installer). Requires admin and,
     for the packaging tools, Chocolatey. Omit if you already have everything.
     (Inno's unofficial language files are staged at packaging time, not here, so
@@ -187,7 +187,7 @@ function Sync-InnoLanguages([string]$LanguagesDir) {
     }
     # Pin $issTag to the tag matching your Inno version to avoid message-version
     # mismatches (e.g. 'is-6_7_1'); 'main' = latest.
-    $issTag  = 'main'
+    $issTag  = 'is-6_7_1'
     $apiUrl  = "https://api.github.com/repos/jrsoftware/issrc/contents/Files/Languages/Unofficial?ref=$issTag"
     $headers = @{ 'User-Agent' = 'eo-build' }
     # Authenticate the API call when a token is available (CI) so the single
@@ -207,7 +207,11 @@ function Sync-InnoLanguages([string]$LanguagesDir) {
 # PowerShell process. vcvars only prepends MSVC/SDK dirs, so it preserves the
 # deterministic PATH ordering we set up below (native tools > Cygwin > rest).
 function Import-VcVars([string]$Arch, [string]$SdkVersion) {
-    $batName = if ($Arch -eq 'x86') { 'vcvars32.bat' } else { 'vcvars64.bat' }
+    $batName = switch ($Arch) {
+        'x86'   { 'vcvars32.bat' }
+        'arm64' { 'vcvarsarm64.bat' }   # native arm64 host (windows-11-arm)
+        default { 'vcvars64.bat' }
+    }
     $vcvars  = Join-Path (Get-VsInstallPath) "VC\Auxiliary\Build\$batName"
     if (-not (Test-Path $vcvars)) { throw "vcvars not found at $vcvars" }
 
@@ -257,19 +261,19 @@ try {
         }
 
         # 1b. Windows 10 SDK + MSVC v141 toolset + ATL + MFC (x86 & x64).
-        Write-Host "Adding Win10 SDK 19041 + VC v141 + ATL + MFC ..."
-        $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-        $installPath = Get-VsInstallPath
-        & $vsInstaller modify `
-            --installPath $installPath `
-            --add Microsoft.VisualStudio.Component.Windows10SDK.19041 `
-            --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 `
-            --add Microsoft.VisualStudio.Component.VC.v141.ATL `
-            --add Microsoft.VisualStudio.Component.VC.v141.MFC `
-            --quiet --norestart --force
-        if ($LASTEXITCODE -notin @(0, 3010)) {
-            Write-Warning "vs_installer returned $LASTEXITCODE - components may already be installed, continuing."
-        }
+        #Write-Host "Adding Win10 SDK 19041 + VC v141 + ATL + MFC ..."
+        #$vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+        #$installPath = Get-VsInstallPath
+        #& $vsInstaller modify `
+        #    --installPath $installPath `
+        #    --add Microsoft.VisualStudio.Component.Windows10SDK.19041 `
+        #    --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 `
+        #    --add Microsoft.VisualStudio.Component.VC.v141.ATL `
+        #    --add Microsoft.VisualStudio.Component.VC.v141.MFC `
+        #    --quiet --norestart --force
+        #if ($LASTEXITCODE -notin @(0, 3010)) {
+        #    Write-Warning "vs_installer returned $LASTEXITCODE - components may already be installed, continuing."
+        #}
 
         # 1c. Packaging tools via Chocolatey.
         if (Get-Command choco -ErrorAction SilentlyContinue) {
@@ -286,6 +290,11 @@ try {
         } else {
             Write-Warning "Chocolatey not found - skipping Inno Setup / 7-Zip / Advanced Installer install. Install them manually or install choco first."
         }
+
+        # 1d. aqtinstall (Qt installer) via pip.
+        Write-Host "Installing aqtinstall via pip ..."
+        python -m pip install --upgrade --break-system-packages aqtinstall
+        Assert-LastExit "pip install aqtinstall"
     }
 
     # ───────────────── 2. obtain the Linux-built common content ──────────────
@@ -303,9 +312,10 @@ try {
 
         Push-Location (Join-Path $RepoRoot 'build')
         try {
-            docker buildx bake -f ./docker-bake.hcl desktop-common `
+            docker buildx bake -f ../docker-bake.hcl desktop-common `
                 --set "desktop-common.tags=desktop-common:local" `
-                --set "desktop-common.output=type=docker"
+                --set "desktop-common.output=type=docker" `
+                --set "*.context=../.."
             Assert-LastExit "docker bake"
         } finally { Pop-Location }
 

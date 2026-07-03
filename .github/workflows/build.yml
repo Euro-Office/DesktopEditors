@@ -133,9 +133,6 @@ jobs:
           # Targets with empty tags= are not pushed regardless of this flag.
           push: false
           set: |
-            core-base.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache
-            core-base.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache,mode=max
-            core-base.tags=
             core-wasm.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-wasm-buildcache
             core-wasm.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-wasm-buildcache,mode=max
             core-wasm.tags=
@@ -151,7 +148,7 @@ jobs:
             desktop-common.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache
             desktop-common.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache,mode=max
             desktop-common.tags=${{format('{0}/{1}:{2}', env.REGISTRY, matrix.brand.image_name, steps.meta.outputs.sha_short)}}
-            desktop-common.output=type=image,push=true
+            desktop-common.output=type=tar,dest=./common.tar
         env:
           REGISTRY: ${{ env.REGISTRY }}
           PRODUCT_VERSION: ${{ steps.meta.outputs.product_version }}
@@ -161,21 +158,80 @@ jobs:
           NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
           NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
 
-      - name: Extract files from image
-        run: |
-          docker create --name tmp ${{ env.REGISTRY }}/${{ matrix.brand.image_name }}:${{ steps.meta.outputs.sha_short }} true
-          docker cp tmp:/ ./common
-          docker rm tmp
       - uses: actions/upload-artifact@v4
         with:
           name: common-files
-          path: |
-            common
+          path: ./build/common.tar          # was ./build/common
+          compression-level: 0
+
+
+  crosscompile-3rdparty-arm64:
+    runs-on: windows-2022                 # x64 host that cross-compiles to arm64
+    env:
+      PYTHONUTF8: "1"
+      DEPOT_TOOLS_WIN_TOOLCHAIN: "0"      # V8: use the locally installed VS, not Google's toolchain
+      NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}   # required: ensure_dep uploads here
+      NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
+ 
+    steps:
+      - name: Checkout fork repository (with submodules)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: .
+          submodules: recursive
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+ 
+      # windows-2022 ships VS2022 but not always the ARM64 *target* tools.
+      # clang-cl (V8) links arm64 against the arm64 Windows SDK libs;
+      # cl.exe (OpenSSL) needs the amd64_arm64 toolset. Add both.
+      - name: Add ARM64 build tools to Visual Studio
+        shell: pwsh
+        run: |
+          $vsWhere     = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          $installPath = & $vsWhere -latest -products * -property installationPath
+          & $vsInstaller modify `
+            --installPath $installPath `
+            --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 `
+            --add Microsoft.VisualStudio.Component.VC.ATL.ARM64 `
+            --add Microsoft.VisualStudio.Component.VC.MFC.ARM64 `
+            --quiet --norestart --force
+          if ($LASTEXITCODE -notin @(0, 3010)) {
+            Write-Warning "vs_installer returned $LASTEXITCODE - components may already be present, continuing."
+          }
+
+          
+      # Sets the amd64_arm64 cross environment for all later steps, incl.
+      # VSCMD_ARG_TGT_ARCH=arm64 -- the single signal openssl, v8 and the
+      # cache tag all key off of.
+      - name: Set up arm64 cross MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
+
+
+      # ASSUMPTION: build_3rdparty.py can be told to *target* arm64 while
+      # running on an x64 host. If it only builds host-arch today, that's the
+      # gap to close first (see notes in chat: V8 -> target_cpu="arm64";
+      # OpenSSL -> Configure VC-WIN64-ARM under the amd64_arm64 MSVC env).
+      - name: Cross-compile arm64 third-party (V8, OpenSSL)
+        shell: pwsh
+        run: |
+          python ${{ github.workspace }}\core\Common\3dParty\build_3rdparty.py `
+            --only=v8,openssl `
+            "${{ github.workspace }}\workdir" `
+            "${{ github.workspace }}\installdir"
+
 
   build-windows:
-    runs-on: windows-2022
-    needs: build-common
-
+    runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
+    needs: [build-common, crosscompile-3rdparty-arm64]
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - amd64
+          - arm64
     env:
       PYTHONUTF8: "1"
       NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
@@ -201,7 +257,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: common-files
-          path: .\common
+          path: .                            # lands as .\common.tar
+
+      - name: Extract common
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .\common | Out-Null
+          tar -xf .\common.tar -C .\common   # bsdtar ships with windows-2022/arm runners
 
       # Install Cygwin WITHOUT touching PATH (the script does the PATH ordering).
       # add-to-path:false stops the action from prepending C:\cygwin\bin and
@@ -219,22 +281,26 @@ jobs:
             python3
             python3-devel
 
-      - name: Install Windows SDK, v141 toolset and ATL
+      - name: Install aqtinstall
         shell: pwsh
-        run: |
-          $vsWhere     = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-          $installPath = & $vsWhere -latest -products * -property installationPath
-          & $vsInstaller modify `
-            --installPath $installPath `
-            --add Microsoft.VisualStudio.Component.Windows10SDK.19041 `
-            --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 `
-            --add Microsoft.VisualStudio.Component.VC.v141.ATL `
-            --add Microsoft.VisualStudio.Component.VC.v141.MFC `
-            --quiet --norestart --force
-          if ($LASTEXITCODE -notin @(0, 3010)) {
-            Write-Warning "vs_installer returned $LASTEXITCODE — components may already be installed, continuing."
-          }
+        run: python -m pip install --upgrade --break-system-packages aqtinstall
+
+#      - name: Install Windows SDK, v141 toolset and ATL
+#        shell: pwsh
+#        run: |
+#          $vsWhere     = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+#          $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+#          $installPath = & $vsWhere -latest -products * -property installationPath
+#          & $vsInstaller modify `
+#            --installPath $installPath `
+#            --add Microsoft.VisualStudio.Component.Windows10SDK.19041 `
+#            --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 `
+#            --add Microsoft.VisualStudio.Component.VC.v141.ATL `
+#            --add Microsoft.VisualStudio.Component.VC.v141.MFC `
+#            --quiet --norestart --force
+#          if ($LASTEXITCODE -notin @(0, 3010)) {
+#            Write-Warning "vs_installer returned $LASTEXITCODE — components may already be installed, continuing."
+#          }
 
 
       - name: Set up sccache
@@ -257,7 +323,7 @@ jobs:
           .\build\windows\build.ps1 `
             -CommonDir      "${{ github.workspace }}\common" `
             -ProductVersion "${{ env.PRODUCT_VERSION }}" `
-            -Arch           x64 `
+            -Arch           ${{ matrix.arch == 'arm64' && 'arm64' || 'x64' }}  `
             -Target         standalone `
             -CompanyName    Euro-Office `
             -ProductName    DesktopEditors
@@ -265,7 +331,7 @@ jobs:
       # ---- collect outputs (stays in the workflow) ---- #
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-packages
+          name: windows-packages-${{ matrix.arch }}
           path: |
             desktop-apps/package/zip/*.zip
             desktop-apps/package/inno/*.exe
@@ -273,7 +339,7 @@ jobs:
 
 
   build-linux:
-    runs-on: 'ubuntu-latest'
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     needs: build-common
     permissions:
       contents: write
@@ -281,6 +347,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        arch:
+          - amd64
+          - arm64
         brand:
           - name: euro-office
             extra_bake_files: ""
@@ -305,6 +374,16 @@ jobs:
           repository: Euro-Office/nextcloud-office-brand
           path: build/brands/nextcloud-office-brand
           token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: common-files
+          path: ./build/linux
+
+      - name: Extract common
+        run: |
+          mkdir -p ./build/linux/common
+          tar -xf ./build/linux/common.tar -C ./build/linux/common
 
       - name: Debug workspace
         run: |
@@ -381,12 +460,10 @@ jobs:
             core-base.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache
             core-base.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache,mode=max
             core-base.tags=
-            third-party.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}third-party-buildcache
-            third-party.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}third-party-buildcache,mode=max
-            third-party.tags=
             desktop-linux.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache
             desktop-linux.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache,mode=max
             desktop-linux.tags=
+            desktop-linux.contexts.desktop-common=./common
             packages.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}packages-buildcache
             packages.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}packages-buildcache,mode=max
             packages.tags=
@@ -402,7 +479,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-packages
+          name: linux-packages-${{ matrix.arch }}
           path: |
             build/linux/deploy/packages/*.deb
             build/linux/deploy/packages/*.rpm
