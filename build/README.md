@@ -5,7 +5,7 @@ This directory holds everything needed to build **Euro-Office DesktopEditors**
 
 If you just want to build, go straight to your platform:
 
-- **[Linux](./linux/README.md)** — a Docker-based build (`docker buildx bake`)
+- **[Linux](./linux/README.md)** — a container-based build (`docker buildx bake`, or Podman via `./build.sh`)
 - **[Windows](./windows/README.md)** — a PowerShell-driven MSVC build (`build.ps1`)
 
 The rest of this page explains the model both platforms share. Read it once and
