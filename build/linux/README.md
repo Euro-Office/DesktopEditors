@@ -58,6 +58,28 @@ cd build/linux
 ./build.sh
 ```
 
+### Low-RAM mode (recommended on 16 GB hosts)
+
+The script now auto-selects a conservative CMake/Ninja parallelism level from the
+host's available RAM and CPU count, and runs `desktop-common` and `packages` in
+two sequential bake invocations to reduce peak memory usage.
+
+Current heuristic:
+
+- about **1 job per 8 GiB available RAM**
+- never less than `1`
+- never more than the host CPU count
+- capped at `4` to stay conservative
+
+You can override parallelism explicitly:
+
+```sh
+cd build/linux
+CMAKE_BUILD_PARALLEL_LEVEL=1 ./build.sh   # minimum RAM, slowest build
+# or
+CMAKE_BUILD_PARALLEL_LEVEL=3 ./build.sh   # faster, uses more RAM
+```
+
 ## How the desktop image is built
 
 The desktop stage (in the bake Dockerfile) follows the standard sequence:
