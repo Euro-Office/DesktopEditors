@@ -57,6 +57,14 @@ variable "PRODUCT_NAME" {
   default = "Desktop Editors"
 }
 
+variable "ARCH_TRIPLET" {
+  default = "x64-linux-v2"
+}
+
+variable "ARCH_MARCH_FLAGS" {
+  default = "-march=x86-64-v2"
+}
+
 # ──────────────────────────────────────────────
 # BUILD GROUPS
 # ──────────────────────────────────────────────
@@ -81,6 +89,8 @@ target "_common" {
     PRODUCT_NAME        = "${PRODUCT_NAME}"
     COMPANY_NAME        = "${COMPANY_NAME}"
     COMPANY_NAME_LOW    = "${COMPANY_NAME_LOW}"
+    ARCH_TRIPLET        = "${ARCH_TRIPLET}"
+    ARCH_MARCH_FLAGS    = "${ARCH_MARCH_FLAGS}"
   }
 }
 
