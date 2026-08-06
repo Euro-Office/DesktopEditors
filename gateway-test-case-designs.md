@@ -228,11 +228,13 @@ Backing API confirmed: `ApiRange.SetNumberFormat(sFormat)`/`Merge(isAcross)`/`Cl
 
 ### C4. Copy/paste, find/replace
 
+Backing API confirmed: `ApiRange.Copy(destination)` (`apiBuilder.js:11338`) requires an actual `ApiRange` object as `destination`, not a string -- resolved via `ws.GetRange(scope.to)`. `ApiRange.Find(oSearchData)`/`Replace(oReplaceData)` (11616, 11764) are methods **on a range**, not a document/sheet-wide search -- `Find` returns **a single `ApiRange | null`** (the first match), not a list, so `cell.find`'s originally-planned "returns 2 matches" expectation doesn't correspond to any real capability of this method; corrected to reflect single-match semantics. Both operate over `ApiWorksheet.GetUsedRange()` (`apiBuilder.js:8524`) as the search scope, since no `range` scope field was in the original design and the real methods need one to call `.Find`/`.Replace` on. Result addresses read via `ApiRange.GetAddress()` (10043) rather than the unserializable `ApiRange` handle itself.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C4.1 | A1 = "src" | `cell.copy{sheet:"Sheet1", from:"A1", to:"B1"}` | B1 == `"src"` | Positive |
-| C4.2 | A1:A3 contain "foo","bar","foo" | `cell.find{sheet:"Sheet1", text:"foo"}` | returns 2 matches: A1, A3 | Positive |
-| C4.3 | A1:A3 contain "foo","bar","foo" | `cell.replace{sheet:"Sheet1", find:"foo", replace:"baz"}` | A1 == A3 == `"baz"`, A2 unchanged | Positive |
+| C4.1 | A1 = "src" | `cell.copy{sheet:"Sheet1", from:"A1", to:"B1"}` | returns `null`; B1 == `"src"` | Positive |
+| C4.2 | A1:A3 contain "foo","bar","foo" | `cell.find{sheet:"Sheet1", text:"foo"}` | returns `"A1"` (the first match's address only -- `Find` has no "all matches" mode) | Positive |
+| C4.3 | A1:A3 contain "foo","bar","foo" | `cell.replace{sheet:"Sheet1", find:"foo", replace:"baz"}` | returns the matched range's address or `null` if nothing matched; underlying `Replace` semantics (single vs. all occurrences) determined by `ReplaceAll`, defaulted to `true` in the command's script since the gateway command has no per-call granularity control in this design | Positive |
 
 ### C5. Font/fill/border/alignment formatting
 
