@@ -130,10 +130,14 @@ Backing API confirmed: `ApiDocument.CreateStyle(sStyleName, sType)` (`apiBuilder
 
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| B9.1 | Blank doc, valid local image file fixture | `word.createImage{path:"<fixture.png>", width:100, height:100}` | `word.getAllDrawingObjects{}` length increases by 1 | Positive |
-| B9.2 | Blank doc | `word.createImage{path:"/nonexistent/file.png", width:100, height:100}` | `Error{code: SCRIPT_EXCEPTION}` (or a dedicated `RESOURCE_NOT_FOUND` if the allowlist layer pre-checks file existence — decide at implementation) | Negative |
-| B9.3 | Doc with 1 image | `word.setWrappingStyle{drawingIndex:0, style:"square"}` | wrapping style reads back `"square"` | Positive |
-| B9.4 | Doc with 1 image | `word.setHorPosition{drawingIndex:0, position:200, relativeTo:"page"}` | horizontal position reads back `200` relative to `"page"` | Positive |
+Backing API confirmed: `Api.CreateImage(imageSrc, width, height)` (`apiBuilder.js:4674`) documents `imageSrc` as "currently only internet URL or Base64 encoded images are supported" — **not** an arbitrary local file path, correcting this section's original `path` fixture design. `width`/`height` are EMU (English Metric Units), not pixels. `ApiParagraph.AddDrawing` (`apiBuilder.js:10486`) inserts the created `ApiImage` (which extends `ApiDrawing`, `apiBuilder.js:3665`) into a paragraph — `paraIndex` added to the scope below since the original design omitted a target paragraph entirely. `ApiDrawing.SetWrappingStyle`/`SetHorPosition` (`apiBuilder.js:18651,18771`) operate on a resolved drawing, indexed the same way as `word.getAllDrawingObjects` (§B2).
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B9.1 | Blank doc, valid base64-encoded PNG fixture | `word.createImage{paraIndex:0, imageSrc:"data:image/png;base64,<fixture>", width:914400, height:914400}` (1x1 inch, 914400 EMU/inch) | `word.getAllDrawingObjects{}` length increases by 1 | Positive |
+| B9.2 | Blank doc | `word.createImage{paraIndex:0, imageSrc:"not-a-valid-data-uri-or-url", width:914400, height:914400}` | `Error{code: SCRIPT_EXCEPTION}` — `createImage`'s underlying loader rejects an unrecognized source at load time, not at the gateway's schema layer (schema only constrains shape: non-empty string, positive EMU) | Negative |
+| B9.3 | Doc with 1 image | `word.setWrappingStyle{drawingIndex:0, style:"square"}` | returns `true` | Positive |
+| B9.4 | Doc with 1 image | `word.setHorPosition{drawingIndex:0, distanceEmu:200000, relativeTo:"page"}` | returns `true` | Positive |
 
 ### B10. Headers/footers, page setup
 
