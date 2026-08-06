@@ -3,11 +3,10 @@
 ## 0. Scope & non-negotiables (from requirements)
 
 - Gateway is **authenticated** (token) and **allowlisted** (command names + JSON-schema params, no raw string interpolation into JS — every param goes into a `scope` object that's JSON-serialized and injected as a bound variable, never string-concatenated into the script text).
-- Internally backed by CDP (`Runtime.evaluate` calling `Asc.editor.callCommand(...)`), but **the CDP endpoint itself is never reachable off-process**. Two supported deployment modes, chosen by config, not by hardcoding one:
-  - **`--gateway-mode=embedded`** (default): gateway logic lives inside the DesktopEditors binary; it opens CDP on `127.0.0.1:0` (ephemeral, OS-assigned port) itself, and nothing outside the process ever sees that port — the Unix domain socket (or loopback-TCP+token, see below) is the *only* thing exposed externally.
-  - **`--gateway-mode=helper`**: a companion process (`eo-gateway-helper`) is spawned by DesktopEditors at startup, handed the ephemeral CDP port over a private, non-listening channel (inherited fd / local socket handshake, not a discoverable port), and re-exposes the authenticated socket. Same allowlist/auth code, different process boundary — useful for iterating on gateway code without rebuilding/relaunching the whole editor.
-  - Target discovery in both modes reuses the app's existing browser↔document tracking (the same map the app already keeps from CEF/CefBrowser instances to open documents) instead of matching CDP targets by URL/title — this avoids a second source of truth and avoids exposing document paths over CDP metadata.
-  - **Confirmed by code inspection** (`desktop-sdk/ChromiumBasedEditors/lib/src/cefwrapper/client_app.h:305-306`, `.../lib/src/applicationmanager.{h,cpp}`, `.../lib/src/cefview.cpp`): the app embeds real CEF/Chromium, and `apiBuilder.js` genuinely executes in Chromium's own V8 (`client_renderer_wrapper.cpp:593`, `CAscEditorNativeV8Handler : public CefV8Handler`). Chromium's real DevTools Protocol is already wired in via `command_line->AppendSwitchWithValue("--remote-debugging-port", "8080")`, currently gated by `CAscApplicationManager::GetDebugInfoSupport()` (`applicationmanager.h:284-285`, `applicationmanager.cpp:865-873`) and only used today to power the F1 "Show DevTools" window and the right-click Inspect menu (`cefview.cpp:5238-5241`, `5278-5281`). The gateway must **not** reuse `GetDebugInfoSupport()`/the F1 toggle — that's a user-facing dev feature and shouldn't be conflated with the gateway's always-on internal CDP link. Instead it adds a separate, internal-only startup path that appends the same switch with value `"0"` (ephemeral, OS-assigned) whenever the gateway is enabled, independent of `debug_mode`; `GatewayCommandRunner` reads the assigned port back via Chromium's own JSON version endpoint on that port, fetched only from inside the process/loopback and never re-exposed. This confirms `Asc.editor.callCommand` via `Runtime.evaluate` is literally implementable as designed — no engine-swap risk.
+- Internally backed by CDP (`Runtime.evaluate`), driven **in-process** — no CDP port, external or ephemeral, ever exists. This is a revision of the design below the line, made after a second round of code inspection; the original "embedded/helper mode with an ephemeral `127.0.0.1` CDP port" design is kept struck through for the record, not silently erased:
+  - ~~gateway logic opens CDP on `127.0.0.1:0` itself; `GatewayCommandRunner` talks to it over a WebSocket (`QtWebSockets`)~~ — superseded. Investigation of the vendored CEF headers (`desktop-sdk/ChromiumBasedEditors/lib/src/cef/linux/include/cef_browser.h:563,579,590-591`, unconditionally available, no version guard) found `CefBrowserHost::SendDevToolsMessage`/`ExecuteDevToolsMethod`/`AddDevToolsMessageObserver` — CDP protocol messages sent **directly against an already-owned `CefBrowser`**, explicitly documented as not requiring any external DevTools/remote-debugging session. Since the app already tracks every open document's `CefBrowser` via `CAscApplicationManager::GetViewById`/`m_mapViews`, there is nothing left to correlate — we already hold the exact browser a command should run against. `desktop-sdk`'s `CCefView` gained a narrow, CEF-type-free bridge method, `SendGatewayDevToolsMessage(jsonMessage, messageId, callback)` (`cefview.h`/`cefview.cpp`), and `GatewayCommandRunner` calls it directly. `QtWebSockets` was added then removed from the build once this was found — no external CDP port, WebSocket dependency, or "which deployment mode" question survives this: **there is exactly one mode.**
+  - Target discovery: `CAscApplicationManager::GetViewById(targetViewId)` — the app's existing view map — not CDP target URL/title matching. This part of the original design goal is unchanged, just now trivially satisfied (no correlation step needed at all, see above) rather than requiring one.
+  - **Confirmed by code inspection** (`desktop-sdk/ChromiumBasedEditors/lib/src/cefwrapper/client_app.h`, `client_renderer_wrapper.cpp:593`): the app embeds real CEF/Chromium, and `apiBuilder.js` genuinely executes in Chromium's own V8 (`CAscEditorNativeV8Handler : public CefV8Handler`) — confirms `Runtime.evaluate` is literally implementable as designed, no engine-swap risk. (The F1 "Show DevTools"/`GetDebugInfoSupport()` toggle and its `--remote-debugging-port=8080` switch, `client_app.h:305-306`, remain untouched, unrelated user-facing dev feature — the gateway never touches or depends on it, in either the old or new design.)
 - External transport is also config-selectable, not a single hardcoded choice:
   - **`--transport=unix-socket`** (default): a real `AF_UNIX` `SOCK_STREAM` socket, not the app's existing single-instance mechanism. Code inspection (`desktop-apps/win-linux/src/platform_linux/singleapplication.cpp:112-136`, `desktop-apps/win-linux/extras/update-daemon/src/classes/csocket.{h,cpp}`) found that `SingleApplication`'s IPC is actually a hand-rolled `CSocket` — raw `AF_INET`/`SOCK_DGRAM` UDP over loopback, bound to a per-UID-derived address (`inetAddrFromUserId()`, `csocket.cpp:62-72`, `127.<uid_hi>.<uid_lo>.1`) on a fixed/configurable port (`Utils::getInstAppPort()`, default `13012`), framed as fixed 1024-byte blobs or pipe-delimited `"cmd|param1|param2"` strings, with **zero authentication** ("primary instance" is just whoever `bind()`s first). That's the wrong shape for arbitrary JSON + real auth, and UDP has no connection state to authenticate against. So the gateway's Unix-socket transport is a genuinely new listener that reuses only the *pattern* — a per-UID-derived path so two users on the same box never collide — at e.g. `$XDG_RUNTIME_DIR/eo-gateway-<uid>.sock`, mode `0600`, giving us real OS-enforced peer isolation via `SO_PEERCRED` that UDP loopback can't provide. Auth token still required in the first frame of every connection, layered on top of (not instead of) the `SO_PEERCRED` check.
   - **`--transport=tcp-loopback`**: `127.0.0.1` only (never `0.0.0.0`), token required identically. For hosts/CLIs that can't do Unix sockets (e.g. cross-container access to a headless editor). Follows the same per-UID-derived-port idea from `csocket.cpp` so two users' gateways never collide, but rides over TCP (not UDP) so there's a real connection to authenticate before any command is accepted. Never used as a substitute for the socket's own auth — same allowlist/token logic runs underneath.
@@ -19,36 +18,34 @@
 ## 1. Architecture
 
 ```
-┌─────────────────────────────── DesktopEditors process ───────────────────────────────┐
-│                                                                                        │
-│  existing browser↔document tracking (CEF)  ──────────────┐                            │
-│                                                            ▼                           │
-│  ┌───────────────┐   Runtime.evaluate    ┌──────────────────────────┐                 │
-│  │ Embedded CDP  │◄──────────────────────│   GatewayCommandRunner    │                 │
-│  │ 127.0.0.1:eph │   (Asc.editor.        │  - resolve target doc     │                 │
-│  │ (never        │    callCommand,       │  - build scope JSON       │                 │
-│  │  externally   │    scope injected as  │  - allowlist check         │                 │
-│  │  reachable)   │    bound var)          │  - dispatch to CDP        │                 │
-│  └───────────────┘                       └──────────┬─────────────┘                 │
-│                                                        │                               │
-│                                          ┌─────────────▼──────────────┐               │
-│                                          │      GatewayServer         │               │
-│                                          │  - token auth per conn     │               │
-│                                          │  - JSON-in/JSON-out framing│               │
-│                                          │  - AF_UNIX SOCK_STREAM OR  │               │
-│                                          │    tcp-loopback listener   │               │
-│                                          └─────────────┬──────────────┘               │
-└────────────────────────────────────────────────────────┼──────────────────────────────┘
-                                                          │  (auth token + JSON command)
-                                                ┌─────────▼─────────┐
-                                                │   CLI (eo-ctl)     │
-                                                │  - finds/launches  │
-                                                │    editor process  │
-                                                │  - sends commands  │
-                                                └────────────────────┘
+┌─────────────────────────────── DesktopEditors process ────────────────────────────────┐
+│                                                                                         │
+│  CAscApplicationManager::GetViewById(targetViewId) ───────┐                            │
+│  (existing view map, m_mapViews)                          ▼                            │
+│  ┌──────────────────────────┐  SendGatewayDevToolsMessage  ┌───────────────────────┐   │
+│  │  CCefView (resolved)      │◄─────────────────────────────│  GatewayCommandRunner │   │
+│  │  → CefBrowserHost::       │  Runtime.evaluate JSON,       │  - allowlist check    │   │
+│  │    SendDevToolsMessage    │  in-process, no port/socket   │  - schema validate    │   │
+│  │    (in-process CDP)       │──────────────────────────────▶│  - resolve target     │   │
+│  └──────────────────────────┘  response via                 └───────────┬───────────┘   │
+│                                 AddDevToolsMessageObserver                │               │
+│                                                              ┌────────────▼────────────┐  │
+│                                                              │      GatewayServer       │  │
+│                                                              │  - token auth per conn   │  │
+│                                                              │  - JSON-in/JSON-out      │  │
+│                                                              │  - AF_UNIX SOCK_STREAM   │  │
+│                                                              └────────────┬────────────┘  │
+└───────────────────────────────────────────────────────────────────────────┼──────────────┘
+                                                                             │ (auth token + JSON command)
+                                                                   ┌─────────▼─────────┐
+                                                                   │   CLI (eo-ctl)     │
+                                                                   │  - finds/launches  │
+                                                                   │    editor process  │
+                                                                   │  - sends commands  │
+                                                                   └────────────────────┘
 ```
 
-`--gateway-mode=helper` inserts a second process between `GatewayCommandRunner`'s CDP client and `GatewayServer`, communicating over an unexposed private channel (inherited socketpair fd) — everything above `GatewayServer` is identical.
+No `--gateway-mode`/`--transport` choice survives the in-process-CDP revision above — `GatewayServer` is the only externally-reachable thing, over one transport (`AF_UNIX SOCK_STREAM`); everything upstream of it never leaves the process.
 
 ## 2. Wire protocol (shared by both transports, both modes)
 
@@ -86,10 +83,11 @@ Example allowlist entry:
 
 ## 3. Repo touch points
 
-- `desktop-sdk/ChromiumBasedEditors/lib/src/cefwrapper/client_app.h` (and `applicationmanager.{h,cpp}`) — add the internal-only `--remote-debugging-port=0` startup path described in §0, separate from `GetDebugInfoSupport()`.
+- `desktop-sdk/ChromiumBasedEditors/lib/include/cefview.h` / `.../lib/src/cefview.cpp` — `CCefView::SendGatewayDevToolsMessage`, the in-process CDP bridge (§0/§1), built on `CefBrowserHost::SendDevToolsMessage`/`AddDevToolsMessageObserver`. **Done** — landed on `feature/cdp-gateway-cli`.
+- `desktop-apps/win-linux/src/gateway/` — `GatewayServer`, `GatewayCommandRunner`, `AllowlistTable`, per-editor command-table headers (`commands/wordcommands.{h,cpp}` done; `commands/cellcommands.{h,cpp}`/`slidecommands.{h,cpp}`/`pdfcommands.{h,cpp}` to follow the build order). **Started** — infrastructure + Word §B1 landed.
+- `desktop-apps/win-linux/src/main.cpp` — starts `Gateway::GatewayServer` once, after `AscAppManager::startApp()`. **Done**.
 - `desktop-apps/win-linux/src/platform_linux/singleapplication.cpp` / `desktop-apps/win-linux/extras/update-daemon/src/classes/csocket.{h,cpp}` — read for the per-UID address-derivation pattern only; **not** extended directly (see §0 for why: UDP, fixed 1024-byte frames, zero auth — wrong shape for this).
-- New module, name TBD at implementation time, e.g. `desktop-apps/common/Gateway/` — `GatewayServer`, `GatewayCommandRunner`, `AllowlistTable`, per-editor command-table headers (`WordCommands.h`, `CellCommands.h`, `SlideCommands.h`, `PdfCommands.h`).
-- CLI: `desktop-apps/win-linux/tools/eo-ctl/` (sibling to `extras/update-daemon`), following the `x2t` precedent (`core/X2tConverter/`: own `src/main.cpp` + `build/cmake/CMakeLists.txt`, `add_executable`, wired into the parent via a single `add_subdirectory(...)` line — see `core/CMakeLists.txt:22-28`) rather than being appended into `desktop-apps`' main `COMMON_SOURCES` the way `update-daemon` currently is.
+- CLI: `desktop-apps/win-linux/tools/eo-ctl/` (sibling to `extras/update-daemon`), following the `x2t` precedent (`core/X2tConverter/`: own `src/main.cpp` + `build/cmake/CMakeLists.txt`, `add_executable`, wired into the parent via a single `add_subdirectory(...)` line — see `core/CMakeLists.txt:22-28`) rather than being appended into `desktop-apps`' main `COMMON_SOURCES` the way `update-daemon` currently is. **Done** (skeleton).
 
 ## 4. Command families, in build order
 
