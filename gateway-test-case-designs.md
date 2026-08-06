@@ -340,10 +340,12 @@ Backing API confirmed: `ApiWorksheet.GetRangeByNumber(nRow, nCol)` (`apiBuilder.
 
 ### C15. Create charts and edit data series
 
+Backing API confirmed: `ApiWorksheet.GetAllCharts()` (`apiBuilder.js:9359`) is the addressing mechanism -- `chartIndex` indexes into it, matching this document's established index-based pattern already, no redesign needed (unlike §C9/§C12's name/id-based fixes, `ApiChart` has no `GetName`/`SetName` at all, so index-into-`GetAllCharts()` is in fact the *only* real addressing option). `ApiChart.AddSeria(sNameRange, sValuesRange, sXValuesRange)` (13641) and `SetSeriaName(sNameRange, nSeria)` (13608) both take **range strings** (or plain text for the name) rather than a single `range`/`name` scalar -- `cell.addSeria`'s `range` scope field maps to `sValuesRange` (with name left blank/auto), and `cell.setSeriaName`'s `name` field is passed as `sNameRange`, which the underlying method accepts as either a formula range or literal text per its own doc comment. Chart *creation* (`ApiWorksheet.AddChart`, 9098) is out of scope for this family per the original design (fixtures assume a pre-existing chart) -- not added speculatively.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C15.1 | Sheet with 1 chart, 1 series | `cell.addSeria{chartIndex:0, range:"Sheet1!B1:B10"}` | chart now has 2 series | Positive |
-| C15.2 | Sheet with 1 chart, 1 series named "Old" | `cell.setSeriaName{chartIndex:0, seriaIndex:0, name:"Revenue"}` | series name reads back `"Revenue"` | Positive |
+| C15.1 | Sheet with 1 chart, 1 series | `cell.addSeria{sheet:"Sheet1", chartIndex:0, valuesRange:"Sheet1!B1:B10"}` | returns `null`; chart now has 2 series | Positive |
+| C15.2 | Sheet with 1 chart, 1 series named "Old" | `cell.setSeriaName{sheet:"Sheet1", chartIndex:0, seriaIndex:0, name:"Revenue"}` | returns `true` | Positive |
 
 ### C16. Read SmartArt object type
 
