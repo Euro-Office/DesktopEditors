@@ -303,11 +303,13 @@ Backing API confirmed: `ApiWorksheet.GetFreezePanes()` (`apiBuilder.js:9474`) + 
 
 ### C11. Insert images/shapes/OLE objects
 
+Backing API confirmed: `ApiWorksheet.AddImage`/`AddOleObject` (`apiBuilder.js:9167,9228`) place objects by column/row + EMU offset, not a `range`/`path` -- `sImageSrc` is a URL or base64 data URI (same as `word.createImage`, §B9), not a local file path. `AddShape(sType, nWidth, nHeight, oFill, oStroke, ...)` (9146) requires real `ApiFill`/`ApiStroke` objects (`oFill.UniFill`, `oStroke.Ln`) -- their constructors (`Api.CreateSolidFill`/`CreateNoFill`/`CreateStroke` or similar) are not defined in `sdkjs/cell/apiBuilder.js` itself (only referenced via `Asc.editor.CreateNoFill()` at line 9198, suggesting a shared cross-editor factory not yet located in this pass). **`cell.addShape` is deferred, not guessed** -- same discipline as `word.addCheckBoxForm` (§B12) -- until the Fill/Stroke factory is confirmed.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C11.1 | 1-sheet wb, fixture image | `cell.addImage{sheet:"Sheet1", path:"<fixture.png>", range:"A1"}` | sheet's image list length == 1 | Positive |
-| C11.2 | 1-sheet wb | `cell.addShape{sheet:"Sheet1", type:"rect", range:"A1"}` | sheet's shape list length == 1 | Positive |
-| C11.3 | 1-sheet wb, fixture OLE payload | `cell.addOleObject{sheet:"Sheet1", path:"<fixture.bin>", range:"A1"}` | sheet's OLE object list length == 1 | Positive |
+| C11.1 | 1-sheet wb, valid base64-encoded PNG fixture | `cell.addImage{sheet:"Sheet1", imageSrc:"data:image/png;base64,<fixture>", width:914400, height:914400, fromCol:0, colOffset:0, fromRow:0, rowOffset:0}` | returns `true` | Positive |
+| C11.2 | *(deferred -- see note above)* | `cell.addShape{...}` | not implemented in this pass | Deferred |
+| C11.3 | 1-sheet wb, fixture base64 OLE payload | `cell.addOleObject{sheet:"Sheet1", imageSrc:"data:image/png;base64,<preview>", width:914400, height:914400, data:"<fixture-data>", appId:"x-office/binary", fromCol:0, colOffset:0, fromRow:0, rowOffset:0}` | returns `true` | Positive |
 
 ### C12. Comments with replies
 
