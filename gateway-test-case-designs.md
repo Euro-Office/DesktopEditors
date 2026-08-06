@@ -278,11 +278,19 @@ Backing API confirmed: `ApiAutoFilter.ApplyFilter()` (`apiBuilder.js:27379`) doe
 
 ### C9. PivotTable
 
+Backing API confirmed: there is no `AddPivotTable`/`AddPivotDataField`-as-a-single-call shape at all -- the real workflow is three distinct steps, none of which match the original design's `sourceRange`-only addressing:
+1. `Api.InsertPivotExistingWorksheet(dataRef, pivotRef, confirmation)` (`apiBuilder.js:7676`) creates the pivot table, taking real `ApiRange` objects (not strings) for both source and destination, returning an `ApiPivotTable`.
+2. `ApiWorksheet.GetPivotByName(name)` (9412) is how a pivot table is *re*-resolved in a later, separate gateway call -- there's no addressing by source range. `ApiPivotTable.GetName()`/`SetName()` (16770/16782) exist, so the create command explicitly names the table so later commands can find it.
+3. `ApiPivotTable.AddDataField(field)` (16192) returns an `ApiPivotDataField`, and **`ApiPivotField.SetFunction` (the originally-assumed target) is a hardcoded stub that always errors** ("This method can only be called on a data field... use ApiPivotTable.GetDataFields") -- the real setter is `ApiPivotDataField.SetFunction(func)` (17582), called either right after `AddDataField` or later via `ApiPivotTable.GetDataFields(field)` (16633) to re-resolve the same data field. `func` takes real enum strings (`"Sum"`, `"Average"`, `"Count"`, ... -- capitalized, not `"sum"`/`"average"`).
+
+Commands redesigned around this real shape: `cell.addPivotTable` (create + name it), `cell.addPivotDataField` (add a data field to an already-created, named table), `cell.setPivotFieldFunction` (re-resolve and set a data field's aggregation).
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C9.1 | Source data range with a "Region" and "Sales" column | `cell.addPivotDataField{sourceRange:"A1:B10", field:"Sales", function:"sum"}` | resulting pivot table has 1 data field summing "Sales" | Positive |
-| C9.2 | Pivot table created | `cell.setPivotFieldFunction{field:"Sales", function:"average"}` | data field's aggregation reads back `"average"` | Positive |
-| C9.3 | Source range with no "NoSuchColumn" | `cell.addPivotDataField{sourceRange:"A1:B10", field:"NoSuchColumn", function:"sum"}` | `Error{code: SCRIPT_EXCEPTION}` | Negative |
+| C9.1 | Source data range with a "Region" and "Sales" column in A1:B10 | `cell.addPivotTable{sourceSheet:"Sheet1", sourceRange:"A1:B10", pivotSheet:"Sheet1", pivotRange:"D1", name:"MyPivot"}` | returns `true` | Positive |
+| C9.2 | Pivot table "MyPivot" created | `cell.addPivotDataField{sheet:"Sheet1", pivotName:"MyPivot", field:"Sales", func:"Sum"}` | returns `true` | Positive |
+| C9.3 | Pivot table "MyPivot" has a "Sales" data field | `cell.setPivotFieldFunction{sheet:"Sheet1", pivotName:"MyPivot", field:"Sales", func:"Average"}` | returns `true` | Positive |
+| C9.4 | Pivot table "MyPivot", source has no "NoSuchColumn" | `cell.addPivotDataField{sheet:"Sheet1", pivotName:"MyPivot", field:"NoSuchColumn", func:"Sum"}` | `Error{code: SCRIPT_EXCEPTION}` (`AddDataField` calls `private_MakeError` and returns `null` for an unknown field -- converted to a thrown error, same pattern as elsewhere) | Negative |
 
 ### C10. Freeze panes
 
