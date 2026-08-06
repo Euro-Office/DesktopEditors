@@ -143,9 +143,13 @@ Backing API confirmed: `Api.CreateImage(imageSrc, width, height)` (`apiBuilder.j
 
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| B10.1 | Blank doc, default section | `word.getHeader{sectionIndex:0, type:"default"}` then `word.addText{...}` on it | header content updated; re-fetching header returns the new text | Positive |
-| B10.2 | Blank doc | `word.setPageMargins{sectionIndex:0, top:20, bottom:20, left:20, right:20}` | margins read back as set | Positive |
-| B10.3 | Blank doc | `word.setPageSize{sectionIndex:0, width:0, height:0}` (zero/degenerate size) | `Error{code: SCRIPT_EXCEPTION}` or `SCHEMA_INVALID` (schema should set `minimum` > 0) | Negative |
+Backing API confirmed: `ApiDocument` has no `GetSection(index)` -- only `GetFinalSection()` (`apiBuilder.js:7191`), so `sectionIndex` from the original design doesn't correspond to a real accessor; these commands operate on the document's one final section only (correct for every fixture in this document, which are all single-section). `ApiSection.GetHeader(sType, isCreate)` (`apiBuilder.js:13289`) returns an `ApiDocumentContent`, which has no direct `AddText` -- populated via `Api.CreateParagraph()` (`apiBuilder.js:4575`) + `ApiParagraph.AddText` (§B3) + `ApiDocumentContent.AddElement(0, paragraph)` (`apiBuilder.js:6052`). `SetPageMargins`/`SetPageSize` (`apiBuilder.js:13181,13141`) take twips, matching §B5's unit correction.
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B10.1 | Blank doc, default section | `word.setHeaderText{type:"default", text:"Confidential"}` | returns `null`; the section's default header now contains a paragraph with that text (verified at the §6 build/deploy gate, since reading it back needs the same unserializable-`ApiDocumentContent` problem as §B2/§B6 worked around for reads, not writes) | Positive |
+| B10.2 | Blank doc | `word.setPageMargins{left:1440, top:1440, right:1440, bottom:1440}` (1 inch each) | returns `true` | Positive |
+| B10.3 | Blank doc | `word.setPageSize{width:0, height:0}` (zero/degenerate size) | `Error{code: SCHEMA_INVALID}` (schema sets `minimum:1` on both) | Negative |
 
 ### B11. Bookmarks and hyperlinks
 
