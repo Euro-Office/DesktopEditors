@@ -207,11 +207,13 @@ Backing API confirmed in `sdkjs/cell/apiBuilder.js`: `Api.AddSheet(sName)` (777,
 
 ### C2. Cell/range read & write
 
+Backing API confirmed: `ApiWorksheet.GetRange(Range1, Range2)` (`apiBuilder.js:8602`) resolves a range string on a given sheet; `ApiRange.SetValue(data)` (10161) has **no separate formula path** -- there is no `ApiRange.SetFormula` at all. Setting a cell's raw string value to something starting with `"="` is what makes it a formula (the same single setter Excel's own UI uses) -- corrected `cell.setValue`'s scope from separate `value`/`formula` fields down to one `value` field. `ApiRange.GetFormula()` (10241) returns `"= " + this.range.getFormula()` -- note the literal space after `=`, an unusual detail preserved here rather than assumed away.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C2.1 | 1-sheet wb | `cell.setValue{sheet:"Sheet1", range:"A1", value:42}` | `cell.getValue{sheet:"Sheet1", range:"A1"}` returns `42` | Positive |
-| C2.2 | 1-sheet wb | `cell.setValue{sheet:"Sheet1", range:"A1", formula:"=1+1"}` | `cell.getFormula{sheet:"Sheet1", range:"A1"}` returns `"=1+1"`; `cell.getValue{...}` returns `2` (post-recalc) | Positive |
-| C2.3 | 1-sheet wb | `cell.setValue{sheet:"Sheet1", range:"ZZ99999999", value:1}` (out-of-grid-bounds range) | `Error{code: SCHEMA_INVALID}` or `SCRIPT_EXCEPTION}` depending on where the range grammar is validated | Negative |
+| C2.1 | 1-sheet wb | `cell.setValue{sheet:"Sheet1", range:"A1", value:42}` | returns `true`; `cell.getValue{sheet:"Sheet1", range:"A1"}` returns `42` | Positive |
+| C2.2 | 1-sheet wb | `cell.setValue{sheet:"Sheet1", range:"A1", value:"=1+1"}` | returns `true`; `cell.getFormula{sheet:"Sheet1", range:"A1"}` returns `"= 1+1"` (note the space); `cell.getValue{...}` returns `2` post-recalc | Positive |
+| C2.3 | 1-sheet wb | `cell.setValue{sheet:"Sheet1", range:"ZZ99999999", value:1}` (out-of-grid-bounds range) | `Error{code: SCRIPT_EXCEPTION}` -- `GetRange` throws when the range string doesn't resolve, not a gateway-schema-level rejection (range grammar isn't validated by a regex at the schema layer, deliberately, since Excel's range grammar is itself complex enough that re-validating it there would just duplicate `getRange2`'s own parsing) | Negative |
 | C2.4 | 1-sheet wb | `cell.getValue{sheet:"NoSuchSheet", range:"A1"}` | `Error{code: SCRIPT_EXCEPTION}` (sheet not found) | Negative |
 
 ### C3. Number formats, merge, clear
