@@ -259,11 +259,13 @@ Backing API confirmed: `ApiRange.GetFormatConditions()` (`apiBuilder.js:12827`) 
 
 ### C7. Data validation and named ranges
 
+Backing API confirmed: `ApiRange.GetValidation()` (`apiBuilder.js:12793`) returns an `ApiValidation`; `.Add(Type, AlertStyle, Operator, Formula1, Formula2)` (19898) takes the real internal enum strings (`FromXlValidationTypeTo`/`FromXlValidationOperatorTo`, 19653/19747) -- `"xlValidateWholeNumber"`/`"xlBetween"`, not the originally-planned `"whole"`/`"between"`; corrected the scope's `type`/`operator` fields to the real string values. `ApiWorksheet.AddDefName(sName, sRef, isHidden)` (8974) **returns `false`, not a thrown exception**, for an invalid name/ref (per its own doc comment) -- the command's script converts that `false` into a thrown error, keeping this gateway's own error contract (`SCRIPT_EXCEPTION`, not a silently-ignored `false`) consistent across every command, so C7.3's expected error code is unchanged even though the underlying method itself doesn't throw.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C7.1 | A1 no validation | `cell.addValidation{sheet:"Sheet1", range:"A1", type:"whole", operator:"between", min:1, max:10}` | setting A1 = 20 via `cell.setValue` afterward either rejects or flags invalid per validation semantics — confirm whichever behavior the underlying API has (validation may be advisory, not enforced) | Positive |
-| C7.2 | 1-sheet wb | `cell.addDefName{name:"MyRange", refersTo:"Sheet1!$A$1:$A$5"}` | reading defined names includes `"MyRange"` pointing at that range | Positive |
-| C7.3 | 1-sheet wb | `cell.addDefName{name:"1InvalidName", refersTo:"Sheet1!$A$1"}` (name starting with digit — invalid per Excel naming rules) | `Error{code: SCHEMA_INVALID}` or `SCRIPT_EXCEPTION` | Negative |
+| C7.1 | A1 no validation | `cell.addValidation{sheet:"Sheet1", range:"A1", type:"xlValidateWholeNumber", operator:"xlBetween", formula1:"1", formula2:"10"}` | returns `true`; whether `cell.setValue{...,value:20}` afterward is actually rejected is validation-enforcement behavior deferred to the §6 build/deploy gate (validation may be advisory, not enforced, at the model level) | Positive |
+| C7.2 | 1-sheet wb | `cell.addDefName{name:"MyRange", refersTo:"Sheet1!$A$1:$A$5"}` | returns `true` | Positive |
+| C7.3 | 1-sheet wb | `cell.addDefName{name:"1InvalidName", refersTo:"Sheet1!$A$1"}` (name starting with digit — invalid per Excel naming rules) | `Error{code: SCRIPT_EXCEPTION}` (the command throws on `AddDefName`'s `false` return, since the underlying method itself doesn't throw) | Negative |
 
 ### C8. AutoFilter
 
