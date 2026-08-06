@@ -249,11 +249,13 @@ Backing API confirmed: `ApiRange.SetFontName` (`apiBuilder.js:10513`) takes a pl
 
 ### C6. Conditional formatting
 
+Backing API confirmed: `ApiRange.GetFormatConditions()` (`apiBuilder.js:12827`) returns an `ApiFormatConditions` collection; `.Add*` methods (`AddColorScale(ColorScaleType)`, `AddDatabar()`, `AddIconSetCondition()`, lines 21119, 21229, 21299) each return the created rule object or `null` on failure, all JSON-unserializable -- commands return a boolean (`!!result`) instead, established pattern. `AddIconSetCondition()` takes **no parameters** -- the originally-planned `iconSet` scope field doesn't correspond to a constructor argument (icon-set type appears to be set via a property on the returned `ApiIconSetCondition`, not investigated further this pass since it's not needed to create a rule at all); dropped rather than guessed at.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C6.1 | A1:A10 with numeric values | `cell.addColorScale{sheet:"Sheet1", range:"A1:A10"}` | reading the range's conditional formats returns 1 color-scale rule | Positive |
-| C6.2 | A1:A10 with numeric values | `cell.addDatabar{sheet:"Sheet1", range:"A1:A10"}` | 1 databar rule present | Positive |
-| C6.3 | A1:A10 with numeric values | `cell.addIconSetCondition{sheet:"Sheet1", range:"A1:A10", iconSet:"3TrafficLights"}` | 1 icon-set rule present with matching icon set | Positive |
+| C6.1 | A1:A10 with numeric values | `cell.addColorScale{sheet:"Sheet1", range:"A1:A10", scaleType:3}` | returns `true` | Positive |
+| C6.2 | A1:A10 with numeric values | `cell.addDatabar{sheet:"Sheet1", range:"A1:A10"}` | returns `true` | Positive |
+| C6.3 | A1:A10 with numeric values | `cell.addIconSetCondition{sheet:"Sheet1", range:"A1:A10"}` | returns `true`; the icon set itself is whatever `AddIconSetCondition()`'s own default is -- customizing it needs a follow-up investigation of `ApiIconSetCondition`'s own setters before adding scope fields for it | Positive |
 
 ### C7. Data validation and named ranges
 
