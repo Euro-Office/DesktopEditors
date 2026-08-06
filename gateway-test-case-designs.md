@@ -195,13 +195,15 @@ Fixture convention: "1-sheet wb" = workbook with a single sheet "Sheet1", A1:C3 
 
 ### C1. Sheet management
 
+Backing API confirmed in `sdkjs/cell/apiBuilder.js`: `Api.AddSheet(sName)` (777, top-level `Api`, not `ApiWorkbook`) throws if `Api.GetSheet(sName)` already resolves a sheet with that name; `Api.GetSheets()`/`ApiWorkbook.GetSheets()` (799, 8173) return `ApiWorksheet[]`, not serializable directly -- `cell.getSheets` returns an array of names via `ApiWorksheet.GetName()` (8546), same established pattern. `ApiWorksheet.SetActive()` (8332) is on the worksheet, not `ApiWorkbook.SetActiveSheet`. `Api.GetSheet(nameOrIndex)` (867) resolves a sheet by name for target resolution.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C1.1 | 1-sheet wb | `cell.addSheet{name:"Data"}` | `cell.getSheets{}` returns 2 sheets, including `"Data"` | Positive |
+| C1.1 | 1-sheet wb | `cell.addSheet{name:"Data"}` | returns `null`; `cell.getSheets{}` returns `["Sheet1","Data"]` | Positive |
 | C1.2 | 1-sheet wb | `cell.addSheet{name:"Sheet1"}` (duplicate name) | `Error{code: SCRIPT_EXCEPTION}` (Excel semantics disallow duplicate sheet names) | Negative |
 | C1.3 | Wb with sheets "Sheet1","Data" | `cell.setActiveSheet{name:"Data"}` then `cell.getActiveSheet{}` | returns `"Data"` | Positive |
-| C1.4 | 1-sheet wb | `cell.setVisible{name:"Sheet1", visible:false}` on the *only* sheet | `Error{code: SCRIPT_EXCEPTION}` (Excel disallows hiding the last visible sheet) | Negative |
-| C1.5 | Wb with sheet "Sheet1" | `cell.setName{oldName:"Sheet1", newName:"Renamed"}` | `cell.getSheets{}` no longer contains `"Sheet1"`, contains `"Renamed"` | Positive |
+| C1.4 | 1-sheet wb | `cell.setVisible{name:"Sheet1", visible:false}` on the *only* sheet | behavior depends on whether `worksheet.setHidden` itself enforces "can't hide the last visible sheet" -- not confirmed in `apiBuilder.js` (the check may live deeper in `AscCommonExcel`, not vendored/searched this pass); test result at the §6 build/deploy gate resolves this, not assumed here | Positive or Negative (unresolved -- verify at build/deploy gate) |
+| C1.5 | Wb with sheet "Sheet1" | `cell.setName{oldName:"Sheet1", newName:"Renamed"}` | returns `null`; `cell.getSheets{}` no longer contains `"Sheet1"`, contains `"Renamed"` | Positive |
 
 ### C2. Cell/range read & write
 
