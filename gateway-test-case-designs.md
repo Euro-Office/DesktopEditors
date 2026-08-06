@@ -313,11 +313,13 @@ Backing API confirmed: `ApiWorksheet.AddImage`/`AddOleObject` (`apiBuilder.js:91
 
 ### C12. Comments with replies
 
+Backing API confirmed: `ApiRange.AddComment(sText, sAuthor)` (`apiBuilder.js:10969`) returns an `ApiComment | null`. `ApiComment` has no public row/col accessor to re-resolve "the comment on range X" from a *separate*, later gateway call -- but it does have `GetId()` (13921, returns a string). `cell.addReply`/`cell.setSolved` therefore address a comment by the id `cell.addComment` returns, resolved via `ws.GetComments().find(c => c.GetId() === commentId)`, rather than by range -- the range-based addressing in the original design doesn't correspond to any real lookup capability.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C12.1 | A1 no comment | `cell.addComment{sheet:"Sheet1", range:"A1", text:"check this", author:"peter"}` | comment present on A1 with matching text/author | Positive |
-| C12.2 | A1 has 1 comment | `cell.addReply{sheet:"Sheet1", range:"A1", text:"done", author:"jane"}` | comment thread on A1 has 2 entries in order | Positive |
-| C12.3 | A1 has a comment thread | `cell.setSolved{sheet:"Sheet1", range:"A1", solved:true}` | comment reads back `solved:true` | Positive |
+| C12.1 | A1 no comment | `cell.addComment{sheet:"Sheet1", range:"A1", text:"check this", author:"peter"}` | returns the new comment's id (a non-empty string) | Positive |
+| C12.2 | A1 has 1 comment with id from C12.1 | `cell.addReply{sheet:"Sheet1", commentId:"<id>", text:"done", author:"jane"}` | returns `null`; the comment's reply count increases by 1 | Positive |
+| C12.3 | A1 has a comment with id from C12.1 | `cell.setSolved{sheet:"Sheet1", commentId:"<id>", solved:true}` | returns `null` | Positive |
 
 ### C13. Insert/delete rows and columns
 
