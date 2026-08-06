@@ -349,10 +349,12 @@ Backing API confirmed: `ApiWorksheet.GetAllCharts()` (`apiBuilder.js:9359`) is t
 
 ### C16. Read SmartArt object type
 
+Backing API confirmed: `ApiSmartArt` (`apiBuilder.js:13294`) is one variant of the generic `Drawing` typedef (313: `ApiShape | ApiImage | ApiOleObject | ApiChart | ApiGroup | ApiSmartArt`) -- there is no SmartArt-specific collection accessor; `index` addresses into `ApiWorksheet.GetAllDrawings()` (9271), the generic mixed-type collection, not a SmartArt-only one.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C16.1 | Sheet with 1 SmartArt object of a known class | `cell.getSmartArtClassType{sheet:"Sheet1", index:0}` | returns the expected type string, matching the fixture | Positive |
-| C16.2 | Sheet with no SmartArt objects | `cell.getSmartArtClassType{sheet:"Sheet1", index:0}` | `Error{code: SCRIPT_EXCEPTION}` (index out of range on empty collection) | Negative |
+| C16.1 | Sheet with 1 SmartArt object of a known class at drawing index 0 | `cell.getSmartArtClassType{sheet:"Sheet1", index:0}` | returns the expected type string, matching the fixture | Positive |
+| C16.2 | Sheet with no drawings at all | `cell.getSmartArtClassType{sheet:"Sheet1", index:0}` | `Error{code: SCRIPT_EXCEPTION}` (accessing `.GetClassType()` on `undefined` throws a plain JS `TypeError`, propagated the same as any other script exception) | Negative |
 
 ---
 
