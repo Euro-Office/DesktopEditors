@@ -118,9 +118,13 @@ Backing API confirmed: `ApiDocument.Search(sText, isMatchCase)` (`apiBuilder.js:
 
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| B8.1 | Blank doc, no custom styles | `word.createStyle{name:"MyHeading", type:"paragraph"}` | `word.getStyle{name:"MyHeading"}` returns a non-null style handle | Positive |
-| B8.2 | Style "MyHeading" already created | `word.createStyle{name:"MyHeading", type:"paragraph"}` (duplicate) | either idempotent success or `Error{code: SCRIPT_EXCEPTION}` for duplicate — pin behavior, test locks it | Positive or Negative (decide) |
-| B8.3 | Style exists, 1-para doc | `word.setStyleTextPr{styleId:"MyHeading", bold:true}` then apply style to para 0 | paragraph 0's effective bold (inherited from style) reads `true` | Positive |
+Backing API confirmed: `ApiDocument.CreateStyle(sStyleName, sType)` (`apiBuilder.js:7106`) and `ApiDocument.GetStyle(sStyleName)` (`apiBuilder.js:7091`, returns `new ApiStyle(oStyles.Get(oStyleId))` — `.Style` is `undefined` when no such style exists, since `ApiStyle`'s constructor (`apiBuilder.js:3549`) just assigns its argument verbatim). `word.getStyle` therefore returns the JSON-safe boolean `!!style.Style` rather than the unserializable `ApiStyle` handle itself, consistent with this document's established pattern (§B2, §B6). `ApiStyle.SetTextPr(textPr)` (`apiBuilder.js:15424`) requires an actual `ApiTextPr` instance, constructed via `Api.CreateTextPr()` (`apiBuilder.js:27443`) then configured (e.g. `.SetBold`, `apiBuilder.js:15704`) before being passed in — resolved answer decided below rather than left open, since implementing it required picking one anyway.
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B8.1 | Blank doc, no custom styles | `word.createStyle{name:"MyHeading", type:"paragraph"}` | `word.getStyle{name:"MyHeading"}` returns `true` | Positive |
+| B8.2 | Style "MyHeading" already created | `word.createStyle{name:"MyHeading", type:"paragraph"}` (duplicate) | succeeds idempotently — `CreateStyle`'s own doc comment states an existing style of the same name "will be replaced with a new one", confirmed in source, not assumed | Positive |
+| B8.3 | Style exists, 1-para doc | `word.setStyleTextPr{styleId:"MyHeading", bold:true}` | returns `null`; the style's text properties now carry bold (verified via a subsequent `word.setBold`-style read on a paragraph with that style applied, at the §6 build/deploy gate — this harness's schema-validation tests can't apply a paragraph style, only set the style's own properties) | Positive |
 
 ### B9. Insert images/shapes with positioning
 
