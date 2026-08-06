@@ -323,10 +323,12 @@ Backing API confirmed: `ApiRange.AddComment(sText, sAuthor)` (`apiBuilder.js:109
 
 ### C13. Insert/delete rows and columns
 
+Backing API confirmed: `ApiWorksheet.GetRangeByNumber(nRow, nCol)` (`apiBuilder.js:8642`) resolves 0-based grid coordinates directly (`worksheet.getCell3`), matching this document's established row/col index convention -- used to anchor `GetEntireRow()`/`GetEntireColumn()` (12753, 12775) before `Insert(shift)`/`Delete(shift)` (11280, 11241), which take a shift direction string and return nothing.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C13.1 | A1="x", A2="y" | `cell.insertEntireRow{sheet:"Sheet1", rowIndex:1}` | new blank row at index 1; former A2("y") is now A3 | Positive |
-| C13.2 | A1="x", B1="y" | `cell.deleteEntireColumn{sheet:"Sheet1", colIndex:0}` | column A removed; former B1("y") is now A1 | Positive |
+| C13.1 | A1="x", A2="y" | `cell.insertEntireRow{sheet:"Sheet1", rowIndex:1}` | returns `null`; new blank row at index 1; former A2("y") is now A3 | Positive |
+| C13.2 | A1="x", B1="y" | `cell.deleteEntireColumn{sheet:"Sheet1", colIndex:0}` | returns `null`; column A removed; former B1("y") is now A1 | Positive |
 | C13.3 | 1-sheet wb | `cell.insertEntireRow{sheet:"Sheet1", rowIndex:-1}` | `Error{code: SCHEMA_INVALID}` (schema `minimum:0`) | Negative |
 
 ### C14. Recalculate formulas
