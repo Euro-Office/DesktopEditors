@@ -269,10 +269,12 @@ Backing API confirmed: `ApiRange.GetValidation()` (`apiBuilder.js:12793`) return
 
 ### C8. AutoFilter
 
+Backing API confirmed: `ApiAutoFilter.ApplyFilter()` (`apiBuilder.js:27379`) does **not** establish a new AutoFilter over a range at all -- per its own doc comment, it only "reevaluates which rows should be visible based on the active filters" for an AutoFilter that already exists, doing nothing otherwise. Establishing a new AutoFilter range is `ApiRange.SetAutoFilter(Field, ...)` (12216) called with no arguments, which creates one if none exists (and, confusingly, *deletes* the existing one if called again with no `Field` while one is already present -- a toggle, not idempotent). Corrected `cell.applyFilter` to call `SetAutoFilter()` on the resolved range, not the differently-named/differently-behaved `ApplyFilter`. `ApiAutoFilter.GetFilters()` returns `ApiFilter[]`, unserializable -- `cell.getFilters` returns `GetFilterMode()`'s boolean instead (whether *any* AutoFilter exists on the sheet at all), same established pattern.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C8.1 | A1:C10 tabular data with headers in row 1 | `cell.applyFilter{sheet:"Sheet1", range:"A1:C10"}` | `cell.getFilters{sheet:"Sheet1"}` reports the range as filtered | Positive |
-| C8.2 | Filtered range from C8.1 | `cell.getFilters{sheet:"Sheet1"}` on a sheet with no filter applied at all | returns empty/null, not an error | Positive (boundary) |
+| C8.1 | A1:C10 tabular data with headers in row 1 | `cell.applyFilter{sheet:"Sheet1", range:"A1:C10"}` | returns `null`; `cell.getFilters{sheet:"Sheet1"}` returns `true` | Positive |
+| C8.2 | 1-sheet wb, no filter applied at all | `cell.getFilters{sheet:"Sheet1"}` | returns `false`, not an error | Positive (boundary) |
 
 ### C9. PivotTable
 
