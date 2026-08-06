@@ -155,9 +155,13 @@ Backing API confirmed: `ApiDocument` has no `GetSection(index)` -- only `GetFina
 
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| B11.1 | 1-para doc | `word.addBookmark{paraIndex:0, name:"section1"}` | `word.getBookmark{name:"section1"}` returns non-null | Positive |
-| B11.2 | 1-para doc | `word.addHyperlink{paraIndex:0, text:"link", url:"https://example.com"}` | new run inserted with text `"link"`; hyperlink target reads back the URL | Positive |
-| B11.3 | 1-para doc | `word.addHyperlink{paraIndex:0, text:"link", url:"javascript:alert(1)"}` | rejected — `Error{code: SCHEMA_INVALID}` (schema/allowlist restricts URL scheme to http/https/mailto; this is a security-relevant boundary, not just a formatting one) | Negative (security) |
+Backing API confirmed: `ApiDocument.GetBookmark` (`apiBuilder.js:8907`) exists, but bookmark *creation* is only on `ApiRange.AddBookmark` (`apiBuilder.js:1581`), not `ApiParagraph` directly -- resolved via `ApiParagraph.GetRange(0, 0)` (a real, existing method). `ApiParagraph.AddHyperlink(sLink, sScreenTipText, sBookmarkName)` (`apiBuilder.js:10578`) does **not** take display text as a parameter at all -- it calls `this.Paragraph.SelectAll(1)` internally and wraps whatever text is *already in the paragraph* as the hyperlink, rather than inserting new "link"-labeled text. Corrected `word.addHyperlink` to add the text first (`ApiParagraph.AddText`, §B3) then wrap it, rather than assuming a `text` parameter the underlying method doesn't have. `getBookmark` returns a boolean (same unserializable-handle pattern as §B6/§B8) rather than "non-null".
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B11.1 | 1-para doc | `word.addBookmark{paraIndex:0, name:"section1"}` | returns `null`; `word.getBookmark{name:"section1"}` returns `true` | Positive |
+| B11.2 | 1-para doc, empty | `word.addHyperlink{paraIndex:0, text:"link", url:"https://example.com"}` | paragraph now contains text "link" wrapped in a hyperlink pointing at the URL (verified at the §6 build/deploy gate — reading the hyperlink target back hits the same unserializable-object-return problem as other reads in this document, not solvable from the schema-validation harness alone) | Positive |
+| B11.3 | 1-para doc | `word.addHyperlink{paraIndex:0, text:"link", url:"javascript:alert(1)"}` | rejected — `Error{code: SCHEMA_INVALID}` (the command's own scope schema restricts URL scheme to http/https/mailto as defense-in-depth, independent of whatever scheme handling `AddHyperlink` does internally) | Negative (security) |
 
 ### B12. Fillable form fields / content controls
 
