@@ -294,10 +294,12 @@ Commands redesigned around this real shape: `cell.addPivotTable` (create + name 
 
 ### C10. Freeze panes
 
+Backing API confirmed: `ApiWorksheet.GetFreezePanes()` (`apiBuilder.js:9474`) + `ApiFreezePanes.FreezeAt(frozenRange)` (15780) -- takes a range resolved on the *active* worksheet if given as a string (`api.GetRange`, ambiguous relative to a `sheet` scope field not necessarily active), so the command resolves the range explicitly via `ws.GetRange(range)` first and passes the real `ApiRange` object instead, avoiding relying on the string-overload's own sheet-context guess.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C10.1 | 1-sheet wb, no freeze | `cell.freezeAt{sheet:"Sheet1", range:"B2"}` | reading freeze-pane state reports rows 1 / column A frozen | Positive |
-| C10.2 | Frozen at B2 | `cell.freezeAt{sheet:"Sheet1", range:"A1"}` (freeze at origin = effectively unfreeze) | freeze-pane state reports no panes frozen | Positive (boundary) |
+| C10.1 | 1-sheet wb, no freeze | `cell.freezeAt{sheet:"Sheet1", range:"B2"}` | returns `null` | Positive |
+| C10.2 | Frozen at B2 | `cell.freezeAt{sheet:"Sheet1", range:"A1"}` (freeze at origin = effectively unfreeze, per `FreezeAt`'s own bbox-based logic) | returns `null` | Positive (boundary) |
 
 ### C11. Insert images/shapes/OLE objects
 
