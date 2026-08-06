@@ -238,12 +238,14 @@ Backing API confirmed: `ApiRange.Copy(destination)` (`apiBuilder.js:11338`) requ
 
 ### C5. Font/fill/border/alignment formatting
 
+Backing API confirmed: `ApiRange.SetFontName` (`apiBuilder.js:10513`) takes a plain string. `SetFillColor(oColor)` (10772) and `SetBorders(bordersIndex, lineStyle, oColor)` (from §C3's investigation, same file) both require a real `ApiColor` object, not a hex string -- built via `Api.CreateColorFromRGB(r,g,b)` (925), same r/g/b-from-hex decomposition already used for `word.setColor` (§B4). `SetBorders`'s `bordersIndex` switch (same method) has **no `"all"` case** -- only `DiagonalDown/DiagonalUp/Bottom/Left/Right/Top/InsideHorizontal/InsideVertical`; `edge:"all"` is handled by the command's script looping over the four outer edges, not a real single-call API mode. `SetAlignHorizontal` (10575) takes `'left'|'right'|'center'|'justify'` and returns `false` (not an exception) for an unrecognized value -- the command throws if that happens, keeping the gateway's own contract (schema-invalid inputs never reach here; this is a genuine unrecognized-but-schema-shaped case) consistent with everything else in this document.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C5.1 | A1 default font | `cell.setFontName{sheet:"Sheet1", range:"A1", font:"Calibri"}` | font reads back `"Calibri"` | Positive |
-| C5.2 | A1 default fill | `cell.setFillColor{sheet:"Sheet1", range:"A1", color:"#FFFF00"}` | fill reads back `#FFFF00` | Positive |
-| C5.3 | A1 no borders | `cell.setBorders{sheet:"Sheet1", range:"A1", edge:"all", style:"thin"}` | all 4 edges read back `"thin"` | Positive |
-| C5.4 | A1 default align | `cell.setAlignHorizontal{sheet:"Sheet1", range:"A1", align:"center"}` | alignment reads back `"center"` | Positive |
+| C5.1 | A1 default font | `cell.setFontName{sheet:"Sheet1", range:"A1", font:"Calibri"}` | returns `null` | Positive |
+| C5.2 | A1 default fill | `cell.setFillColor{sheet:"Sheet1", range:"A1", color:"#FFFF00"}` | returns `null` | Positive |
+| C5.3 | A1 no borders | `cell.setBorders{sheet:"Sheet1", range:"A1", edge:"all", style:"thin", color:"#000000"}` | returns `null`; all 4 outer edges set via 4 internal `SetBorders` calls | Positive |
+| C5.4 | A1 default align | `cell.setAlignHorizontal{sheet:"Sheet1", range:"A1", align:"center"}` | returns `null` | Positive |
 
 ### C6. Conditional formatting
 
