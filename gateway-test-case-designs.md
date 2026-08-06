@@ -1,0 +1,446 @@
+# Gateway Command Test Case Designs
+
+## Scope of this document
+
+Per [cdp-gateway-cli-plan.md](cdp-gateway-cli-plan.md), the CLI (`eo-ctl`) and the external wire protocol (`GatewayServer`'s auth + framing) are both thin shells around one shared internal call:
+
+```
+GatewayCommandRunner::Execute(commandName: string, scope: JSON) -> Result | Error
+```
+
+All test cases below call `Execute()` **directly, in-process**, bypassing the socket, the wire framing, and the auth-token check — those belong to the `GatewayServer` shell and are covered once, separately, in §A6 (shell-boundary smoke tests), not repeated per command. Every functional test case is therefore identical whether it's exercised by the CLI or the external gateway — that's the point of testing at this layer.
+
+Each test case is specified as: **Setup** (document fixture state before the call) → **Input** (command name + scope) → **Expected** (the assertion against document state / CDP-observable result / error shape) → **Type** (positive / negative). "Actual" is intentionally left blank — it's filled in at execution time, not design time.
+
+Tests are grouped in the same order as the implementation plan: cross-cutting dispatch tests once, then Word → Cell → Slide → PDF, one section per command family.
+
+---
+
+## A. Cross-cutting dispatch-layer tests (run once; apply generically to *any* command — do not re-derive per command below)
+
+These validate `GatewayCommandRunner` itself, independent of which command is invoked. Use any single already-implemented command (e.g. `word.getTitle`) as the vehicle.
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| A1 | Document open, empty title | `command="not.a.real.command"`, `scope={}` | `Error{code: NOT_ALLOWLISTED}`; no CDP `Runtime.evaluate` call is issued (assert via CDP-call spy/count == 0) | Negative |
+| A2 | Document open | `command="word.setBold"`, `scope={}` (missing required `paraIndex`/`runIndex`/`bold`) | `Error{code: SCHEMA_INVALID}`; rejected before any CDP dispatch (spy count == 0) | Negative |
+| A3 | Document open | `command="word.setBold"`, `scope={"paraIndex":"zero","runIndex":2,"bold":true}` (wrong type) | `Error{code: SCHEMA_INVALID}`; no CDP dispatch | Negative |
+| A4 | Document open | `command="word.setBold"`, `scope={"paraIndex":0,"runIndex":2,"bold":true,"__proto__":"x"}` (unexpected/extra field) | `Error{code: SCHEMA_INVALID}` if schema declares `additionalProperties:false` (decide this at implementation time; if allowed, assert the extra field is silently dropped from what reaches the script, never used) | Negative |
+| A5 | No document open / document handle stale | `command="word.getTitle"`, `scope={}` | `Error{code: TARGET_NOT_FOUND}`; no CDP dispatch attempted against a dead target | Negative |
+| A6 | Document open, command deliberately made to throw inside the JS (e.g. call `word.setBold` with an out-of-range `paraIndex` that the script itself throws on rather than the schema catching) | valid schema, but semantically invalid `scope` | `Error{code: SCRIPT_EXCEPTION, message: <propagated CDP exception text>}`; process does not crash, subsequent calls on the same runner still succeed (runner is not left in a broken state) | Negative |
+| A7 | Two sequential valid calls, second depending on first's effect | e.g. `word.setTitle{title:"A"}` then `word.getTitle{}` | second call's result reflects the first call's effect (`"A"`) — confirms state is truly persisted in the document, not just returned from a stub | Positive |
+| A8 (shell-boundary smoke test, not part of the bypass suite — run once against the real `GatewayServer`, not `Execute()` directly) | Gateway running, valid token | connect over configured transport, send `word.getTitle` with **wrong** token | connection rejected / `Error{code: UNAUTHENTICATED}` before `Execute()` is ever reached | Negative |
+| A9 (same shell-boundary tier as A8) | Gateway running, valid token | connect, send `word.getTitle` with correct token | response matches exactly what `Execute("word.getTitle", {})` returns when called in-process — proves the shell adds nothing/changes nothing | Positive |
+
+---
+
+## B. Word
+
+Fixture convention: "blank doc" = a fresh in-memory document with one empty paragraph. "3-para doc" = a fixture with 3 paragraphs of known text, referenced across the whole Word section for reuse.
+
+### B1. Document properties
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B1.1 | Blank doc, no title set | `word.setTitle{title:"Q3 Report"}` | returns `null`; subsequent `word.getTitle{}` returns `"Q3 Report"` | Positive |
+| B1.2 | Blank doc | `word.setTitle{title:""}` | empty string accepted (schema allows empty string unless spec says otherwise — decide at implementation); title reads back as `""` | Positive (boundary) |
+| B1.3 | Blank doc | `word.setCustomProperty{name:"Reviewed", value:"true"}` then `word.getCustomProperties{}` | returned map includes `{"Reviewed":"true"}` | Positive |
+| B1.4 | Blank doc | `word.setCustomProperty{name:"", value:"x"}` | `Error{code: SCRIPT_EXCEPTION}` or `SCHEMA_INVALID` (empty name rejected — pick one behavior at implementation, test locks it in) | Negative |
+| B1.5 | Blank doc | `word.getAuthor{}` before any author set | returns the OS/user-derived default author (whatever `ApiCore` defaults to), not an error | Positive |
+
+### B2. Content enumeration
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B2.1 | 3-para doc | `word.getAllParagraphs{}` | returns array of 3 paragraph handles/indices, in document order | Positive |
+| B2.2 | Blank doc + 1 table inserted via fixture setup | `word.getAllTables{}` | returns array of length 1 | Positive |
+| B2.3 | Blank doc, no drawings | `word.getAllDrawingObjects{}` | returns empty array (not an error, not null) | Positive (boundary) |
+| B2.4 | Blank doc, no charts | `word.getAllCharts{}` | returns empty array | Positive (boundary) |
+
+### B3. Insert/edit text
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B3.1 | Blank doc | `word.addText{paraIndex:0, text:"Hello"}` | `word.getAllParagraphs{}`[0] text == `"Hello"` | Positive |
+| B3.2 | Blank doc | `word.addText{paraIndex:5, text:"x"}` (index beyond paragraph count) | `Error{code: SCRIPT_EXCEPTION}` (out-of-range) | Negative |
+| B3.3 | 3-para doc, para 1 has text "abc" | `word.getText{paraIndex:1, runIndex:0}` | returns `"abc"` | Positive |
+| B3.4 | Blank doc | `word.addText{paraIndex:0, text:""}` | accepted, no-op text change, doc still has 1 run with `""` (or no new run — pin down expected behavior at implementation, test locks it) | Positive (boundary) |
+| B3.5 | Blank doc | `word.addText{paraIndex:0, text:"😀 multi-byte"}` | text round-trips exactly (UTF-8/UTF-16 boundary not corrupted) | Positive (boundary) |
+
+### B4. Character formatting
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B4.1 | Doc with 1 run, bold=false | `word.setBold{paraIndex:0, runIndex:0, bold:true}` | run's bold state reads back `true` via a corresponding `getRunProperties` read (or CDP-observable formatting check) | Positive |
+| B4.2 | Doc with 1 run | `word.setItalic{paraIndex:0, runIndex:0, italic:true}` | italic reads back `true` | Positive |
+| B4.3 | Doc with 1 run | `word.setFontFamily{paraIndex:0, runIndex:0, font:"Arial"}` | font reads back `"Arial"` | Positive |
+| B4.4 | Doc with 1 run | `word.setFontFamily{paraIndex:0, runIndex:0, font:"NotARealFontXYZ"}` | accepted (document-level font substitution is a rendering concern, not a gateway validation concern) — confirms the gateway doesn't over-validate into rendering territory | Positive (boundary) |
+| B4.5 | Doc with 1 run | `word.setColor{paraIndex:0, runIndex:0, color:"#FF0000"}` | color reads back as `#FF0000` | Positive |
+| B4.6 | Doc with 1 run | `word.setColor{paraIndex:0, runIndex:0, color:"not-a-color"}` | `Error{code: SCHEMA_INVALID}` (schema should constrain color to a hex pattern) | Negative |
+
+### B5. Paragraph formatting
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B5.1 | 1-para doc, default alignment | `word.setJc{paraIndex:0, align:"center"}` | alignment reads back `"center"` | Positive |
+| B5.2 | 1-para doc | `word.setJc{paraIndex:0, align:"diagonal"}` (not a valid enum value) | `Error{code: SCHEMA_INVALID}` (schema constrains to left/right/center/both) | Negative |
+| B5.3 | 1-para doc | `word.setSpacingBefore{paraIndex:0, points:12}` | spacing-before reads back `12` | Positive |
+| B5.4 | 1-para doc | `word.setIndLeft{paraIndex:0, points:-5}` | negative indent either accepted (valid Word behavior — hanging indent) or rejected — pin the expected behavior at implementation; test locks it in either way | Positive or Negative (decide) |
+
+### B6. Search & replace
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B6.1 | 3-para doc, one paragraph contains "foo" | `word.search{text:"foo"}` | returns 1 match with correct para/run location | Positive |
+| B6.2 | 3-para doc, "foo" appears twice | `word.search{text:"foo"}` | returns 2 matches | Positive |
+| B6.3 | 3-para doc containing "foo" | `word.searchAndReplace{find:"foo", replace:"bar"}` | subsequent `word.search{text:"foo"}` returns 0 matches; `word.search{text:"bar"}` returns matches at same locations | Positive |
+| B6.4 | 3-para doc, no "zzz" anywhere | `word.search{text:"zzz"}` | returns empty array, not an error | Positive (boundary) |
+
+### B7. Table creation and editing
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B7.1 | Doc with 1 table, 2x2 | `word.addRow{tableIndex:0, rowIndex:1}` | table now has 3 rows; new row has 2 empty cells | Positive |
+| B7.2 | Doc with 1 table, 2x2 | `word.addColumn{tableIndex:0, colIndex:1}` | table now has 3 columns on every row | Positive |
+| B7.3 | Doc with 1 table, 2x2 | `word.mergeCells{tableIndex:0, fromRow:0, fromCol:0, toRow:0, toCol:1}` | resulting table reports the merged cell as a single cell spanning 2 columns | Positive |
+| B7.4 | Doc with 1 table, 2x2 | `word.mergeCells{tableIndex:0, fromRow:0, fromCol:0, toRow:5, toCol:5}` (out of range) | `Error{code: SCRIPT_EXCEPTION}` | Negative |
+| B7.5 | Doc with 1 table | `word.setStyle{tableIndex:0, styleId:"TableGrid"}` | table's style reads back `"TableGrid"` | Positive |
+
+### B8. Style creation and application
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B8.1 | Blank doc, no custom styles | `word.createStyle{name:"MyHeading", type:"paragraph"}` | `word.getStyle{name:"MyHeading"}` returns a non-null style handle | Positive |
+| B8.2 | Style "MyHeading" already created | `word.createStyle{name:"MyHeading", type:"paragraph"}` (duplicate) | either idempotent success or `Error{code: SCRIPT_EXCEPTION}` for duplicate — pin behavior, test locks it | Positive or Negative (decide) |
+| B8.3 | Style exists, 1-para doc | `word.setStyleTextPr{styleId:"MyHeading", bold:true}` then apply style to para 0 | paragraph 0's effective bold (inherited from style) reads `true` | Positive |
+
+### B9. Insert images/shapes with positioning
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B9.1 | Blank doc, valid local image file fixture | `word.createImage{path:"<fixture.png>", width:100, height:100}` | `word.getAllDrawingObjects{}` length increases by 1 | Positive |
+| B9.2 | Blank doc | `word.createImage{path:"/nonexistent/file.png", width:100, height:100}` | `Error{code: SCRIPT_EXCEPTION}` (or a dedicated `RESOURCE_NOT_FOUND` if the allowlist layer pre-checks file existence — decide at implementation) | Negative |
+| B9.3 | Doc with 1 image | `word.setWrappingStyle{drawingIndex:0, style:"square"}` | wrapping style reads back `"square"` | Positive |
+| B9.4 | Doc with 1 image | `word.setHorPosition{drawingIndex:0, position:200, relativeTo:"page"}` | horizontal position reads back `200` relative to `"page"` | Positive |
+
+### B10. Headers/footers, page setup
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B10.1 | Blank doc, default section | `word.getHeader{sectionIndex:0, type:"default"}` then `word.addText{...}` on it | header content updated; re-fetching header returns the new text | Positive |
+| B10.2 | Blank doc | `word.setPageMargins{sectionIndex:0, top:20, bottom:20, left:20, right:20}` | margins read back as set | Positive |
+| B10.3 | Blank doc | `word.setPageSize{sectionIndex:0, width:0, height:0}` (zero/degenerate size) | `Error{code: SCRIPT_EXCEPTION}` or `SCHEMA_INVALID` (schema should set `minimum` > 0) | Negative |
+
+### B11. Bookmarks and hyperlinks
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B11.1 | 1-para doc | `word.addBookmark{paraIndex:0, name:"section1"}` | `word.getBookmark{name:"section1"}` returns non-null | Positive |
+| B11.2 | 1-para doc | `word.addHyperlink{paraIndex:0, text:"link", url:"https://example.com"}` | new run inserted with text `"link"`; hyperlink target reads back the URL | Positive |
+| B11.3 | 1-para doc | `word.addHyperlink{paraIndex:0, text:"link", url:"javascript:alert(1)"}` | rejected — `Error{code: SCHEMA_INVALID}` (schema/allowlist restricts URL scheme to http/https/mailto; this is a security-relevant boundary, not just a formatting one) | Negative (security) |
+
+### B12. Fillable form fields / content controls
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B12.1 | Blank doc | `word.addTextForm{key:"name", paraIndex:0}` | `word.getAllForms{}` length == 1, with key `"name"` | Positive |
+| B12.2 | Doc with 1 text form, key "name" | `word.setFormsData{data:{"name":"Alice"}}` | re-reading the form's value returns `"Alice"` | Positive |
+| B12.3 | Doc with 1 text form, key "name" | `word.setFormsData{data:{"doesNotExist":"x"}}` | either no-op (key not present, ignored) or `Error{code: SCRIPT_EXCEPTION}` — pin behavior | Positive or Negative (decide) |
+| B12.4 | Blank doc | `word.addCheckBoxForm{key:"agree", paraIndex:0, checked:false}` | form reads back unchecked; a subsequent `setFormsData{data:{"agree":true}}` flips it to checked | Positive |
+
+### B13. Comments and track changes
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B13.1 | 1-para doc | `word.addComment{paraIndex:0, text:"needs review", author:"peter"}` | `word.getAllComments{}` length == 1, matching text/author | Positive |
+| B13.2 | Blank doc, revisions off | `word.setTrackRevisions{enabled:true}` then `word.addText{paraIndex:0, text:"new"}` | the inserted text is recorded as a tracked insertion (revision present), not a plain edit | Positive |
+| B13.3 | Doc with pending tracked changes | `word.acceptAllRevisionChanges{}` | no pending revisions remain; content reflects the accepted state | Positive |
+| B13.4 | Doc, no comments | `word.getAllComments{}` | returns empty array, not an error | Positive (boundary) |
+
+---
+
+## C. Cell (Spreadsheet)
+
+Fixture convention: "1-sheet wb" = workbook with a single sheet "Sheet1", A1:C3 empty.
+
+### C1. Sheet management
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C1.1 | 1-sheet wb | `cell.addSheet{name:"Data"}` | `cell.getSheets{}` returns 2 sheets, including `"Data"` | Positive |
+| C1.2 | 1-sheet wb | `cell.addSheet{name:"Sheet1"}` (duplicate name) | `Error{code: SCRIPT_EXCEPTION}` (Excel semantics disallow duplicate sheet names) | Negative |
+| C1.3 | Wb with sheets "Sheet1","Data" | `cell.setActiveSheet{name:"Data"}` then `cell.getActiveSheet{}` | returns `"Data"` | Positive |
+| C1.4 | 1-sheet wb | `cell.setVisible{name:"Sheet1", visible:false}` on the *only* sheet | `Error{code: SCRIPT_EXCEPTION}` (Excel disallows hiding the last visible sheet) | Negative |
+| C1.5 | Wb with sheet "Sheet1" | `cell.setName{oldName:"Sheet1", newName:"Renamed"}` | `cell.getSheets{}` no longer contains `"Sheet1"`, contains `"Renamed"` | Positive |
+
+### C2. Cell/range read & write
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C2.1 | 1-sheet wb | `cell.setValue{sheet:"Sheet1", range:"A1", value:42}` | `cell.getValue{sheet:"Sheet1", range:"A1"}` returns `42` | Positive |
+| C2.2 | 1-sheet wb | `cell.setValue{sheet:"Sheet1", range:"A1", formula:"=1+1"}` | `cell.getFormula{sheet:"Sheet1", range:"A1"}` returns `"=1+1"`; `cell.getValue{...}` returns `2` (post-recalc) | Positive |
+| C2.3 | 1-sheet wb | `cell.setValue{sheet:"Sheet1", range:"ZZ99999999", value:1}` (out-of-grid-bounds range) | `Error{code: SCHEMA_INVALID}` or `SCRIPT_EXCEPTION}` depending on where the range grammar is validated | Negative |
+| C2.4 | 1-sheet wb | `cell.getValue{sheet:"NoSuchSheet", range:"A1"}` | `Error{code: SCRIPT_EXCEPTION}` (sheet not found) | Negative |
+
+### C3. Number formats, merge, clear
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C3.1 | A1 = 1234.5 | `cell.setNumberFormat{sheet:"Sheet1", range:"A1", format:"0.00"}` | subsequent formatted-text read of A1 shows `"1234.50"` | Positive |
+| C3.2 | A1:B2 unmerged | `cell.merge{sheet:"Sheet1", range:"A1:B2"}` | reading A1:B2 as a range reports it merged; B1/A2/B2 are empty subordinate cells | Positive |
+| C3.3 | A1 = "text" | `cell.clearContents{sheet:"Sheet1", range:"A1"}` | `cell.getValue{...}` returns empty/null | Positive |
+
+### C4. Copy/paste, find/replace
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C4.1 | A1 = "src" | `cell.copy{sheet:"Sheet1", from:"A1", to:"B1"}` | B1 == `"src"` | Positive |
+| C4.2 | A1:A3 contain "foo","bar","foo" | `cell.find{sheet:"Sheet1", text:"foo"}` | returns 2 matches: A1, A3 | Positive |
+| C4.3 | A1:A3 contain "foo","bar","foo" | `cell.replace{sheet:"Sheet1", find:"foo", replace:"baz"}` | A1 == A3 == `"baz"`, A2 unchanged | Positive |
+
+### C5. Font/fill/border/alignment formatting
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C5.1 | A1 default font | `cell.setFontName{sheet:"Sheet1", range:"A1", font:"Calibri"}` | font reads back `"Calibri"` | Positive |
+| C5.2 | A1 default fill | `cell.setFillColor{sheet:"Sheet1", range:"A1", color:"#FFFF00"}` | fill reads back `#FFFF00` | Positive |
+| C5.3 | A1 no borders | `cell.setBorders{sheet:"Sheet1", range:"A1", edge:"all", style:"thin"}` | all 4 edges read back `"thin"` | Positive |
+| C5.4 | A1 default align | `cell.setAlignHorizontal{sheet:"Sheet1", range:"A1", align:"center"}` | alignment reads back `"center"` | Positive |
+
+### C6. Conditional formatting
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C6.1 | A1:A10 with numeric values | `cell.addColorScale{sheet:"Sheet1", range:"A1:A10"}` | reading the range's conditional formats returns 1 color-scale rule | Positive |
+| C6.2 | A1:A10 with numeric values | `cell.addDatabar{sheet:"Sheet1", range:"A1:A10"}` | 1 databar rule present | Positive |
+| C6.3 | A1:A10 with numeric values | `cell.addIconSetCondition{sheet:"Sheet1", range:"A1:A10", iconSet:"3TrafficLights"}` | 1 icon-set rule present with matching icon set | Positive |
+
+### C7. Data validation and named ranges
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C7.1 | A1 no validation | `cell.addValidation{sheet:"Sheet1", range:"A1", type:"whole", operator:"between", min:1, max:10}` | setting A1 = 20 via `cell.setValue` afterward either rejects or flags invalid per validation semantics — confirm whichever behavior the underlying API has (validation may be advisory, not enforced) | Positive |
+| C7.2 | 1-sheet wb | `cell.addDefName{name:"MyRange", refersTo:"Sheet1!$A$1:$A$5"}` | reading defined names includes `"MyRange"` pointing at that range | Positive |
+| C7.3 | 1-sheet wb | `cell.addDefName{name:"1InvalidName", refersTo:"Sheet1!$A$1"}` (name starting with digit — invalid per Excel naming rules) | `Error{code: SCHEMA_INVALID}` or `SCRIPT_EXCEPTION` | Negative |
+
+### C8. AutoFilter
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C8.1 | A1:C10 tabular data with headers in row 1 | `cell.applyFilter{sheet:"Sheet1", range:"A1:C10"}` | `cell.getFilters{sheet:"Sheet1"}` reports the range as filtered | Positive |
+| C8.2 | Filtered range from C8.1 | `cell.getFilters{sheet:"Sheet1"}` on a sheet with no filter applied at all | returns empty/null, not an error | Positive (boundary) |
+
+### C9. PivotTable
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C9.1 | Source data range with a "Region" and "Sales" column | `cell.addPivotDataField{sourceRange:"A1:B10", field:"Sales", function:"sum"}` | resulting pivot table has 1 data field summing "Sales" | Positive |
+| C9.2 | Pivot table created | `cell.setPivotFieldFunction{field:"Sales", function:"average"}` | data field's aggregation reads back `"average"` | Positive |
+| C9.3 | Source range with no "NoSuchColumn" | `cell.addPivotDataField{sourceRange:"A1:B10", field:"NoSuchColumn", function:"sum"}` | `Error{code: SCRIPT_EXCEPTION}` | Negative |
+
+### C10. Freeze panes
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C10.1 | 1-sheet wb, no freeze | `cell.freezeAt{sheet:"Sheet1", range:"B2"}` | reading freeze-pane state reports rows 1 / column A frozen | Positive |
+| C10.2 | Frozen at B2 | `cell.freezeAt{sheet:"Sheet1", range:"A1"}` (freeze at origin = effectively unfreeze) | freeze-pane state reports no panes frozen | Positive (boundary) |
+
+### C11. Insert images/shapes/OLE objects
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C11.1 | 1-sheet wb, fixture image | `cell.addImage{sheet:"Sheet1", path:"<fixture.png>", range:"A1"}` | sheet's image list length == 1 | Positive |
+| C11.2 | 1-sheet wb | `cell.addShape{sheet:"Sheet1", type:"rect", range:"A1"}` | sheet's shape list length == 1 | Positive |
+| C11.3 | 1-sheet wb, fixture OLE payload | `cell.addOleObject{sheet:"Sheet1", path:"<fixture.bin>", range:"A1"}` | sheet's OLE object list length == 1 | Positive |
+
+### C12. Comments with replies
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C12.1 | A1 no comment | `cell.addComment{sheet:"Sheet1", range:"A1", text:"check this", author:"peter"}` | comment present on A1 with matching text/author | Positive |
+| C12.2 | A1 has 1 comment | `cell.addReply{sheet:"Sheet1", range:"A1", text:"done", author:"jane"}` | comment thread on A1 has 2 entries in order | Positive |
+| C12.3 | A1 has a comment thread | `cell.setSolved{sheet:"Sheet1", range:"A1", solved:true}` | comment reads back `solved:true` | Positive |
+
+### C13. Insert/delete rows and columns
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C13.1 | A1="x", A2="y" | `cell.insertEntireRow{sheet:"Sheet1", rowIndex:1}` | new blank row at index 1; former A2("y") is now A3 | Positive |
+| C13.2 | A1="x", B1="y" | `cell.deleteEntireColumn{sheet:"Sheet1", colIndex:0}` | column A removed; former B1("y") is now A1 | Positive |
+| C13.3 | 1-sheet wb | `cell.insertEntireRow{sheet:"Sheet1", rowIndex:-1}` | `Error{code: SCHEMA_INVALID}` (schema `minimum:0`) | Negative |
+
+### C14. Recalculate formulas
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C14.1 | A1=2, B1="=A1*2" (formula not yet recalculated after A1 was changed programmatically) | `cell.recalculateAllFormulas{}` | B1's value reads `4` | Positive |
+| C14.2 | Workbook with a formula referencing a deleted/invalid range | `cell.recalculateAllFormulas{}` | call succeeds without throwing; the affected cell shows an in-document `#REF!`-style error value, not a gateway-level error | Positive (boundary) |
+
+### C15. Create charts and edit data series
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C15.1 | Sheet with 1 chart, 1 series | `cell.addSeria{chartIndex:0, range:"Sheet1!B1:B10"}` | chart now has 2 series | Positive |
+| C15.2 | Sheet with 1 chart, 1 series named "Old" | `cell.setSeriaName{chartIndex:0, seriaIndex:0, name:"Revenue"}` | series name reads back `"Revenue"` | Positive |
+
+### C16. Read SmartArt object type
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| C16.1 | Sheet with 1 SmartArt object of a known class | `cell.getSmartArtClassType{sheet:"Sheet1", index:0}` | returns the expected type string, matching the fixture | Positive |
+| C16.2 | Sheet with no SmartArt objects | `cell.getSmartArtClassType{sheet:"Sheet1", index:0}` | `Error{code: SCRIPT_EXCEPTION}` (index out of range on empty collection) | Negative |
+
+---
+
+## D. Slide (Presentation)
+
+Fixture convention: "3-slide deck" = presentation with 3 slides, slide 0 has 1 text box.
+
+### D1. Slide management
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| D1.1 | 3-slide deck | `slide.addSlide{index:1}` | deck now has 4 slides; new slide is at position 1 | Positive |
+| D1.2 | 3-slide deck | `slide.removeSlides{indices:[1]}` | deck now has 2 slides; former slide 2 is now slide 1 | Positive |
+| D1.3 | 3-slide deck | `slide.duplicate{index:0}` | deck now has 4 slides; slide at index 1 has content matching original slide 0 | Positive |
+| D1.4 | 3-slide deck | `slide.moveTo{index:0, newIndex:2}` | slide originally at 0 is now at 2; others shift accordingly | Positive |
+| D1.5 | 3-slide deck | `slide.removeSlides{indices:[99]}` (out of range) | `Error{code: SCRIPT_EXCEPTION}` | Negative |
+| D1.6 | 1-slide deck (only slide) | `slide.removeSlides{indices:[0]}` | either succeeds (deck with 0 slides, if the app allows it) or `Error{code: SCRIPT_EXCEPTION}` — pin behavior since a presentation with 0 slides may be invalid | Positive or Negative (decide) |
+
+### D2. Enumerate slide content
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| D2.1 | Slide with 2 shapes, 1 image, 1 table, 1 chart | `slide.getAllShapes{index:0}` | length 2 | Positive |
+| D2.2 | same fixture | `slide.getAllImages{index:0}` | length 1 | Positive |
+| D2.3 | same fixture | `slide.getAllTables{index:0}` | length 1 | Positive |
+| D2.4 | same fixture | `slide.getAllCharts{index:0}` | length 1 | Positive |
+| D2.5 | blank slide | `slide.getAllShapes{index:2}` (empty slide) | returns empty array, not an error | Positive (boundary) |
+
+### D3. Apply layouts, masters, themes
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| D3.1 | slide with default layout | `slide.getLayout{index:0}` then `slide.applyLayout{index:0, layoutId:<a different known layout>}` | slide's layout reads back the new layout id | Positive |
+| D3.2 | deck with 1 master | `slide.addMaster{}` | deck's master count increases by 1 | Positive |
+| D3.3 | deck with default theme | `slide.applyTheme{themeId:"Office"}` | deck's active theme reads back `"Office"` | Positive |
+
+### D4. Set background, transitions
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| D4.1 | slide default (no) background | `slide.setBackground{index:0, color:"#00FF00"}` | background reads back `#00FF00` | Positive |
+| D4.2 | slide, no transition | `slide.setTransition{index:0, type:"fade", duration:500}` | transition reads back `{type:"fade", duration:500}` | Positive |
+
+### D5. Insert shapes/text boxes with positioning
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| D5.1 | blank slide | `slide.createShape{index:0, type:"rect", x:10, y:10, width:100, height:50}` | `slide.getAllShapes{index:0}` length 1, position matches | Positive |
+| D5.2 | shape created | `slide.setPosition{index:0, shapeIndex:0, x:200, y:200}` | position reads back `{200,200}` | Positive |
+| D5.3 | shape created | `slide.setRotation{index:0, shapeIndex:0, degrees:45}` | rotation reads back `45` | Positive |
+| D5.4 | shape created | `slide.setSize{index:0, shapeIndex:0, width:-10, height:50}` (negative width) | `Error{code: SCHEMA_INVALID}` (schema `minimum:0`) | Negative |
+
+### D6. Text formatting
+
+Same command handlers as Word's `ApiTextPr.SetBold/SetFontFamily` per the plan's note — these test cases exist to prove the *slide-side target resolution* works, not to re-derive formatting semantics already covered in B4.
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| D6.1 | slide 0 has 1 text box with 1 run | `slide.setBold{index:0, shapeIndex:0, runIndex:0, bold:true}` | run's bold reads back `true` | Positive |
+| D6.2 | same fixture | `slide.setFontFamily{index:0, shapeIndex:0, runIndex:0, font:"Georgia"}` | font reads back `"Georgia"` | Positive |
+
+### D7. Insert images
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| D7.1 | blank slide, fixture image | `slide.createImage{index:0, path:"<fixture.png>", x:0, y:0, width:100, height:100}` | `slide.getAllImages{index:0}` length 1 | Positive |
+
+### D8. Table creation and editing
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| D8.1 | blank slide | `slide.createTable{index:0, rows:2, cols:2, x:0, y:0}` | `slide.getAllTables{index:0}` length 1, 2x2 | Positive |
+| D8.2 | slide with 1 table, 2x2 | `slide.addRow{index:0, tableIndex:0, rowIndex:1}` | table now 3 rows | Positive |
+| D8.3 | slide with 1 table, 2x2 | `slide.mergeCells{index:0, tableIndex:0, fromRow:0, fromCol:0, toRow:0, toCol:1}` | resulting merged cell spans 2 columns | Positive |
+
+### D9. Speaker notes
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| D9.1 | slide 0, no notes | `slide.addNotesText{index:0, text:"Remember to mention Q3"}` | `slide.getNotesPage{index:0}` text contains `"Remember to mention Q3"` | Positive |
+| D9.2 | slide 0, notes already set | `slide.addNotesText{index:0, text:"Second note"}` (appending vs. replacing — pin behavior) | notes content reflects whichever is the defined behavior (append or replace); test locks it in | Positive |
+
+### D10. Comments
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| D10.1 | slide 0, no comments | `slide.addComment{index:0, text:"fix typo", author:"peter"}` | `presentation.getAllComments{}` length 1, matches text/author, references slide 0 | Positive |
+| D10.2 | deck with no comments anywhere | `presentation.getAllComments{}` | returns empty array, not an error | Positive (boundary) |
+
+### D11. Document properties
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| D11.1 | fresh deck | `presentation.getDocumentInfo{}` | returns a well-formed info object (title/author/etc, even if defaults) | Positive |
+| D11.2 | fresh deck, custom prop set via fixture | `presentation.getCustomProperties{}` | returns the fixture's custom properties | Positive |
+
+---
+
+## E. PDF
+
+Fixture convention: "1-page PDF" = a single-page PDF with one text form field "Name" and no annotations.
+
+### E1. Form field read/write
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| E1.1 | 1-page PDF, field "Name" empty | `pdf.getAllFields{}` | returns 1 field, key `"Name"`, type text | Positive |
+| E1.2 | field "Name" empty | `pdf.setFieldValue{key:"Name", value:"Alice"}` | `pdf.getAllFields{}` shows field "Name" value `"Alice"` | Positive |
+| E1.3 | fixture with 1 checkbox field "Agree", unchecked | `pdf.setFieldValue{key:"Agree", value:true}` | field reads back checked | Positive |
+| E1.4 | 1-page PDF | `pdf.setFieldValue{key:"DoesNotExist", value:"x"}` | `Error{code: SCRIPT_EXCEPTION}` (no such field) | Negative |
+| E1.5 | fixture with 1 combobox field "Country" with options ["US","UK"] | `pdf.setFieldValue{key:"Country", value:"FR"}` (not in the option list) | either rejected (`Error{code: SCRIPT_EXCEPTION}`) or accepted as free text depending on the underlying combobox's `editable` flag — pin behavior at implementation | Positive or Negative (decide) |
+
+### E2. Annotations
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| E2.1 | 1-page PDF, no annotations, page has visible text | `pdf.addHighlight{page:0, rect:[10,10,100,20]}` | `pdf.getAllAnnots{page:0}` length 1, type highlight, matching rect | Positive |
+| E2.2 | same page | `pdf.addUnderline{page:0, rect:[10,10,100,20]}` | annotation count +1, type underline | Positive |
+| E2.3 | same page | `pdf.addStrikeout{page:0, rect:[10,10,100,20]}` | annotation count +1, type strikeout | Positive |
+| E2.4 | same page | `pdf.addFreeText{page:0, rect:[10,10,150,40], text:"Note"}` | annotation count +1, type free-text, text matches | Positive |
+| E2.5 | same page | `pdf.addInk{page:0, points:[[10,10],[20,20],[30,10]]}` | annotation count +1, type ink | Positive |
+| E2.6 | same page | `pdf.addStamp{page:0, rect:[10,10,50,50], stampType:"Approved"}` | annotation count +1, type stamp | Positive |
+| E2.7 | 1-page PDF | `pdf.addHighlight{page:5, rect:[10,10,100,20]}` (page out of range for a 1-page doc) | `Error{code: SCRIPT_EXCEPTION}` | Negative |
+| E2.8 | same page | `pdf.addHighlight{page:0, rect:[-5,-5,-1,-1]}` (degenerate/negative rect) | `Error{code: SCHEMA_INVALID}` (schema constrains rect coordinates to be non-negative and `x2>x1`, `y2>y1`) | Negative |
+
+### E3. Text search/extraction
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| E3.1 | page contains "Invoice Total: $500" | `pdf.search{page:0, text:"Total"}` | returns 1 match with correct location | Positive |
+| E3.2 | page contains "Invoice Total: $500" | `pdf.getSelectedText{page:0, rect:[<bounds around "Total">]}` | returns `"Total"` | Positive |
+| E3.3 | page with no matching text | `pdf.search{page:0, text:"zzz-not-present"}` | returns empty array, not an error | Positive (boundary) |
+| E3.4 | scanned/image-only page (no text layer) | `pdf.recognizeContent{page:0}` | returns recognized text (OCR) matching the fixture's known ground truth, within reasonable tolerance | Positive |
+
+### E4. Redaction
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| E4.1 | page contains "SSN: 123-45-6789" | `pdf.applyRedact{page:0, rect:[<bounds around the SSN>]}` | subsequent `pdf.search{page:0, text:"123-45-6789"}` returns 0 matches; extracted text no longer contains it | Positive |
+| E4.2 | page contains "SSN: 123-45-6789" and "SSN: 987-65-4321" | `pdf.searchAndRedact{text:"SSN:"}` (pattern-based redaction across whole doc) | both SSN lines are redacted; a benign unrelated "SSN" false-positive-free page is unaffected | Positive |
+| E4.3 | page with no matching text | `pdf.searchAndRedact{text:"NOT-PRESENT"}` | succeeds as a no-op, 0 redactions applied, not an error | Positive (boundary) |
+
+### E5. Page operations
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| E5.1 | 1-page PDF | `pdf.addPage{index:1}` | document now has 2 pages | Positive |
+| E5.2 | 2-page PDF | `pdf.removePage{index:0}` | document now has 1 page; remaining page is what was previously page 1 | Positive |
+| E5.3 | 1-page PDF (only page) | `pdf.removePage{index:0}` | either rejected (`Error{code: SCRIPT_EXCEPTION}`, a PDF can't have 0 pages) or produces an empty/invalid document — pin behavior, this is a meaningful edge case to lock down before shipping | Negative (expected) |
+
+---
+
+## F. Cross-editor regression suite
+
+Not new test cases — this is the **execution instruction** referenced by [cdp-gateway-cli-plan.md](cdp-gateway-cli-plan.md) §6 step 4: after each editor's command family is fully implemented and its own section above passes, re-run *every* previously-passing section in this document (§B for Cell's gate, §B+§C for Slide's gate, §B+§C+§D for PDF's gate) against the same freshly built binary, unmodified. A regression is any test case that previously passed and now doesn't — no re-interpretation of "expected" is allowed at that point without a deliberate, called-out design change.
