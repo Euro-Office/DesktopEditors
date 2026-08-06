@@ -167,10 +167,16 @@ Backing API confirmed: `ApiDocument.GetBookmark` (`apiBuilder.js:8907`) exists, 
 
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| B12.1 | Blank doc | `word.addTextForm{key:"name", paraIndex:0}` | `word.getAllForms{}` length == 1, with key `"name"` | Positive |
-| B12.2 | Doc with 1 text form, key "name" | `word.setFormsData{data:{"name":"Alice"}}` | re-reading the form's value returns `"Alice"` | Positive |
-| B12.3 | Doc with 1 text form, key "name" | `word.setFormsData{data:{"doesNotExist":"x"}}` | either no-op (key not present, ignored) or `Error{code: SCRIPT_EXCEPTION}` — pin behavior | Positive or Negative (decide) |
-| B12.4 | Blank doc | `word.addCheckBoxForm{key:"agree", paraIndex:0, checked:false}` | form reads back unchecked; a subsequent `setFormsData{data:{"agree":true}}` flips it to checked | Positive |
+Backing API confirmed: text-form insertion has a real, documented, purpose-built method -- `ApiDocument.InsertTextForm(formPr)` (`sdkjs-forms/apiBuilder.js:452`), which inserts at the current cursor/selection, positioned first via `ApiRange.Select()` (`sdkjs/word/apiBuilder.js:1737`) on `paragraph.GetRange(0,0)`. `ApiDocument.GetAllForms`/`SetFormsData` (`apiBuilder.js:8613,7963`) confirmed; `SetFormsData` takes `Array<{key, value}>` (`FormData` typedef, `apiBuilder.js:7876`), so `word.setFormsData`'s `data` object is converted to that array shape. `getAllForms` returns form keys (via `ApiFormBase.GetFormKey()`, `apiBuilder.js:25123`) rather than the unserializable `ApiForm` handles, same pattern as elsewhere in this document.
+
+**Checkbox-form insertion (`word.addCheckBoxForm`, B12.4) is deferred, not guessed.** `Api.CreateCheckBoxForm(formPr)` exists (`sdkjs-forms/apiBuilder.js:213`), but unlike text forms there is no equivalent `ApiDocument.InsertCheckBoxForm` documented insertion method in the vendored source -- inserting the raw content control it produces would require reaching into `ApiParagraph.AddInlineLvlSdt`'s private push mechanism in a way that isn't confirmed to work (its own `instanceof ApiInlineLvlSdt` type guard would reject an `ApiCheckBoxForm`). Rather than ship an unverified insertion path, B12.4 stays unimplemented until a real insertion method is found or confirmed with the SDK maintainers -- flagged here as an open item, not silently dropped.
+
+| ID | Setup | Input | Expected | Type |
+|---|---|---|---|---|
+| B12.1 | Blank doc | `word.addTextForm{key:"name", paraIndex:0}` | returns `null`; `word.getAllForms{}` returns `["name"]` | Positive |
+| B12.2 | Doc with 1 text form, key "name" | `word.setFormsData{data:{"name":"Alice"}}` | returns `true` (re-reading the form's value needs `GetFormsData`, not currently an allowlisted command -- add it if this read-back becomes necessary at the §6 build/deploy gate) | Positive |
+| B12.3 | Doc with 1 text form, key "name" | `word.setFormsData{data:{"doesNotExist":"x"}}` | `SetFormsData`'s own implementation (`apiBuilder.js:7963`) only requires `arrData` to be an array -- an unknown key inside it is not itself checked, so this is a no-op that still returns `true`, not an error. Decision resolved by reading the source rather than left open. | Positive |
+| B12.4 | *(deferred -- see note above)* | `word.addCheckBoxForm{...}` | not implemented in this pass | Deferred |
 
 ### B13. Comments and track changes
 
