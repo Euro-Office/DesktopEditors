@@ -84,21 +84,25 @@ Backing API confirmed in `sdkjs/word/apiBuilder.js`: `ApiDocument.prototype = Ob
 
 ### B5. Paragraph formatting
 
+Backing API confirmed in `sdkjs/word/apiBuilder.js`: `ApiParagraph.GetParaPr()` (line 10253) returns the `ApiParaPr`; `SetJc/SetSpacingBefore/SetIndLeft` (lines 16677, 16863, 16580) all take **twips** (1/1440 inch, called `twips` in the method's own doc comment), not points — corrected the scope field name from the originally-planned `points` to `twips` to match, per the naming rule against disinformation.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
 | B5.1 | 1-para doc, default alignment | `word.setJc{paraIndex:0, align:"center"}` | alignment reads back `"center"` | Positive |
-| B5.2 | 1-para doc | `word.setJc{paraIndex:0, align:"diagonal"}` (not a valid enum value) | `Error{code: SCHEMA_INVALID}` (schema constrains to left/right/center/both) | Negative |
-| B5.3 | 1-para doc | `word.setSpacingBefore{paraIndex:0, points:12}` | spacing-before reads back `12` | Positive |
-| B5.4 | 1-para doc | `word.setIndLeft{paraIndex:0, points:-5}` | negative indent either accepted (valid Word behavior — hanging indent) or rejected — pin the expected behavior at implementation; test locks it in either way | Positive or Negative (decide) |
+| B5.2 | 1-para doc | `word.setJc{paraIndex:0, align:"diagonal"}` (not a valid enum value) | `Error{code: SCHEMA_INVALID}` (schema constrains to left/right/center/both, the exact enum `ApiParaPr.SetJc` itself accepts) | Negative |
+| B5.3 | 1-para doc | `word.setSpacingBefore{paraIndex:0, twips:240}` | spacing-before reads back `240` twips (12pt) | Positive |
+| B5.4 | 1-para doc | `word.setIndLeft{paraIndex:0, twips:-100}` | negative indent accepted (valid Word behavior — hanging indent; `SetIndLeft` does no sign check itself) | Positive (boundary) |
 
 ### B6. Search & replace
 
+Backing API confirmed: `ApiDocument.Search(sText, isMatchCase)` (`apiBuilder.js:8253`) returns an array of `ApiRange` objects, not JSON-serializable over `returnByValue` (same issue as §B2) -- returns the **match count** instead, matching this document's established pattern of exposing lengths/indices rather than unserializable object handles. `ApiDocument.SearchAndReplace(oProperties)` (`apiBuilder.js:7598`) takes `{searchString, replaceString, matchCase=true}`.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| B6.1 | 3-para doc, one paragraph contains "foo" | `word.search{text:"foo"}` | returns 1 match with correct para/run location | Positive |
-| B6.2 | 3-para doc, "foo" appears twice | `word.search{text:"foo"}` | returns 2 matches | Positive |
-| B6.3 | 3-para doc containing "foo" | `word.searchAndReplace{find:"foo", replace:"bar"}` | subsequent `word.search{text:"foo"}` returns 0 matches; `word.search{text:"bar"}` returns matches at same locations | Positive |
-| B6.4 | 3-para doc, no "zzz" anywhere | `word.search{text:"zzz"}` | returns empty array, not an error | Positive (boundary) |
+| B6.1 | 3-para doc, one paragraph contains "foo" | `word.search{text:"foo"}` | returns `1` | Positive |
+| B6.2 | 3-para doc, "foo" appears twice | `word.search{text:"foo"}` | returns `2` | Positive |
+| B6.3 | 3-para doc containing "foo" | `word.searchAndReplace{find:"foo", replace:"bar"}` | subsequent `word.search{text:"foo"}` returns `0`; `word.search{text:"bar"}` returns the count "foo" had before the replace | Positive |
+| B6.4 | 3-para doc, no "zzz" anywhere | `word.search{text:"zzz"}` | returns `0`, not an error | Positive (boundary) |
 
 ### B7. Table creation and editing
 
