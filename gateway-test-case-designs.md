@@ -40,22 +40,26 @@ Fixture convention: "blank doc" = a fresh in-memory document with one empty para
 
 ### B1. Document properties
 
+Backing API confirmed by reading `sdkjs/word/apiBuilder.js` directly (not assumed): `ApiCore.prototype.SetTitle/GetTitle` (`Api.GetDocument().GetCore()`), `ApiCustomProperties.prototype.Add(name, value)`/`Get(name)` (`Api.GetDocument().GetCustomProperties()`, singular get/add — there is **no** `GetAll` on `ApiCustomProperties`, so B1.3's originally-planned `getCustomProperties` returning a map, and B1.5's `getAuthor`, don't correspond to a real method; both are corrected below rather than implemented against a fabricated API, per repo's anti-speculation rule.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
 | B1.1 | Blank doc, no title set | `word.setTitle{title:"Q3 Report"}` | returns `null`; subsequent `word.getTitle{}` returns `"Q3 Report"` | Positive |
-| B1.2 | Blank doc | `word.setTitle{title:""}` | empty string accepted (schema allows empty string unless spec says otherwise — decide at implementation); title reads back as `""` | Positive (boundary) |
-| B1.3 | Blank doc | `word.setCustomProperty{name:"Reviewed", value:"true"}` then `word.getCustomProperties{}` | returned map includes `{"Reviewed":"true"}` | Positive |
-| B1.4 | Blank doc | `word.setCustomProperty{name:"", value:"x"}` | `Error{code: SCRIPT_EXCEPTION}` or `SCHEMA_INVALID` (empty name rejected — pick one behavior at implementation, test locks it in) | Negative |
-| B1.5 | Blank doc | `word.getAuthor{}` before any author set | returns the OS/user-derived default author (whatever `ApiCore` defaults to), not an error | Positive |
+| B1.2 | Blank doc | `word.setTitle{title:""}` | empty string accepted; title reads back as `""` | Positive (boundary) |
+| B1.3 | Blank doc | `word.setCustomProperty{name:"Reviewed", value:"true"}` then `word.getCustomProperty{name:"Reviewed"}` | returns `"true"` | Positive |
+| B1.4 | Blank doc | `word.setCustomProperty{name:"", value:"x"}` | `Error{code: SCHEMA_INVALID}` (empty name rejected by the command's own scope schema, `RequireString(..., allowEmpty=false)`) | Negative |
+| B1.5 | Blank doc, property never set | `word.getCustomProperty{name:"NoSuchProp"}` | returns `null` (matches `ApiCustomProperties.Get`'s own documented "or null if the property does not exist" contract) — not an error | Positive (boundary) |
 
 ### B2. Content enumeration
 
+Backing API confirmed in `sdkjs/word/apiBuilder.js`: `ApiDocument.prototype = Object.create(ApiDocumentContent.prototype)` (`apiBuilder.js:3112`), so `Api.GetDocument().GetAllParagraphs()/GetAllTables()/GetAllDrawingObjects()/GetAllCharts()` are the real, inherited methods (`ApiDocumentContent.prototype.GetAll*`, `apiBuilder.js:6193-6289`). Each returns an array of `Api*` **object instances** (`ApiParagraph`, `ApiTable`, ...), which are not themselves JSON-serializable over CDP's `returnByValue` — attempting to return them directly comes back as `{}` per element, not usable. Each command below therefore returns **an array of 0-based indices** (`array.map(function(_, idx){ return idx; })`), the same index space `paraIndex`/`tableIndex`/etc. scope fields elsewhere in this document already use — not the original design's "paragraph handles", which was never a concrete wire shape to begin with.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| B2.1 | 3-para doc | `word.getAllParagraphs{}` | returns array of 3 paragraph handles/indices, in document order | Positive |
-| B2.2 | Blank doc + 1 table inserted via fixture setup | `word.getAllTables{}` | returns array of length 1 | Positive |
-| B2.3 | Blank doc, no drawings | `word.getAllDrawingObjects{}` | returns empty array (not an error, not null) | Positive (boundary) |
-| B2.4 | Blank doc, no charts | `word.getAllCharts{}` | returns empty array | Positive (boundary) |
+| B2.1 | 3-para doc | `word.getAllParagraphs{}` | returns `[0,1,2]` | Positive |
+| B2.2 | Blank doc + 1 table inserted via fixture setup | `word.getAllTables{}` | returns `[0]` | Positive |
+| B2.3 | Blank doc, no drawings | `word.getAllDrawingObjects{}` | returns `[]` (not an error, not null) | Positive (boundary) |
+| B2.4 | Blank doc, no charts | `word.getAllCharts{}` | returns `[]` | Positive (boundary) |
 
 ### B3. Insert/edit text
 
