@@ -218,11 +218,13 @@ Backing API confirmed: `ApiWorksheet.GetRange(Range1, Range2)` (`apiBuilder.js:8
 
 ### C3. Number formats, merge, clear
 
+Backing API confirmed: `ApiRange.SetNumberFormat(sFormat)`/`Merge(isAcross)`/`ClearContents()` (`apiBuilder.js:10828,10897,9759`) all return `null`/`undefined` on success (`SetNumberFormat`/`Merge` return `null` explicitly only on a protection failure, otherwise fall through with no return value). No "read formatted text" command is allowlisted yet (only `cell.getValue`, which returns the raw value, not the number-format-applied display string) -- C3.1's read-back is deferred to the §6 build/deploy gate rather than added as a new command speculatively.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| C3.1 | A1 = 1234.5 | `cell.setNumberFormat{sheet:"Sheet1", range:"A1", format:"0.00"}` | subsequent formatted-text read of A1 shows `"1234.50"` | Positive |
-| C3.2 | A1:B2 unmerged | `cell.merge{sheet:"Sheet1", range:"A1:B2"}` | reading A1:B2 as a range reports it merged; B1/A2/B2 are empty subordinate cells | Positive |
-| C3.3 | A1 = "text" | `cell.clearContents{sheet:"Sheet1", range:"A1"}` | `cell.getValue{...}` returns empty/null | Positive |
+| C3.1 | A1 = 1234.5 | `cell.setNumberFormat{sheet:"Sheet1", range:"A1", format:"0.00"}` | returns `null`; formatted-text read-back deferred (no allowlisted command reads it yet) | Positive |
+| C3.2 | A1:B2 unmerged | `cell.merge{sheet:"Sheet1", range:"A1:B2", across:false}` | returns `null` | Positive |
+| C3.3 | A1 = "text" | `cell.clearContents{sheet:"Sheet1", range:"A1"}` | returns `null`; `cell.getValue{...}` returns empty/null | Positive |
 
 ### C4. Copy/paste, find/replace
 
