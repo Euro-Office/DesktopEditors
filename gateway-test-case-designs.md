@@ -435,12 +435,14 @@ Backing API confirmed: `Api.CreateImage(sImageSrc, nWidth, nHeight)` (`sdkjs/sli
 |---|---|---|---|---|
 | D7.1 | blank slide, valid base64-encoded PNG fixture | `slide.createImage{index:0, imageSrc:"data:image/png;base64,<fixture>", x:0, y:0, width:914400, height:914400}` | returns `true` | Positive |
 
-### D8. Table creation and editing
+### D8. Table editing (creation deferred)
+
+Backing API confirmed: `Api.CreateTable(nCols, nRows)` (`sdkjs/slide/apiBuilder.js:947`) places the table on **whatever slide `private_GetCurrentSlide()` currently resolves to** (`ApiPresentation.GetCurSlideIndex()`) -- there is no `ApiPresentation.SetCurSlideIndex`-style public setter to target an arbitrary slide by index first, unlike `AddSlide`'s own internal `CurPage` manipulation. Reliably creating a table on a specific slide via automation therefore isn't possible with the confirmed API surface -- **`slide.createTable` is deferred, not guessed**, same discipline as `slide.applyTheme`/`slide.setBackground`. `ApiTable.AddRow`/`MergeCells` (7412, 7314) operate on an **already-existing** table, addressed via `slide.GetAllTables()[tableIndex]` (§D2's established index space) -- fully implementable regardless of the creation gap. Cell resolution for `MergeCells` uses `ApiTable.GetRow(r).GetCell(c)` (7295, `ApiTableRow.GetCell`, 7614) -- slide's `ApiTable` has **no** `GetCell(row, col)` shortcut the way Word's does.
 
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| D8.1 | blank slide | `slide.createTable{index:0, rows:2, cols:2, x:0, y:0}` | `slide.getAllTables{index:0}` length 1, 2x2 | Positive |
-| D8.2 | slide with 1 table, 2x2 | `slide.addRow{index:0, tableIndex:0, rowIndex:1}` | table now 3 rows | Positive |
+| D8.1 | *(deferred -- see note above)* | `slide.createTable{...}` | not implemented in this pass | Deferred |
+| D8.2 | slide with 1 table, 2x2 | `slide.addRow{index:0, tableIndex:0}` | returns `true`; table now 3 rows | Positive |
 | D8.3 | slide with 1 table, 2x2 | `slide.mergeCells{index:0, tableIndex:0, fromRow:0, fromCol:0, toRow:0, toCol:1}` | resulting merged cell spans 2 columns | Positive |
 
 ### D9. Speaker notes
