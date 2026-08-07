@@ -1,6 +1,6 @@
 # Gateway API & CLI Reference
 
-Generated from the actual committed source — `desktop-apps/win-linux/src/gateway/commands/{word,cell,slide}commands.cpp`, `gatewayserver.cpp`, `gatewaytypes.h`, and `tools/eo-ctl/src/main.cpp` — on `feature/cdp-gateway-cli`. Every scope field, return shape, and error case below is read directly from that code, not reconstructed from memory. See [cdp-gateway-cli-plan.md](cdp-gateway-cli-plan.md) for the architecture and [gateway-test-case-designs.md](gateway-test-case-designs.md) for the full test matrix each command was built against.
+Generated from the actual committed source — `desktop-apps/win-linux/src/gateway/commands/{word,cell,slide,pdf}commands.cpp`, `gatewayserver.cpp`, `gatewaytypes.h`, and `tools/eo-ctl/src/main.cpp` — on `feature/cdp-gateway-cli`. Every scope field, return shape, and error case below is read directly from that code, not reconstructed from memory. See [cdp-gateway-cli-plan.md](cdp-gateway-cli-plan.md) for the architecture and [gateway-test-case-designs.md](gateway-test-case-designs.md) for the full test matrix each command was built against.
 
 ## 1. Transport & authentication
 
@@ -59,6 +59,14 @@ eo-ctl connect ~/Documents/report.docx
 eo-ctl call word.setTitle --scope '{"title":"Q3 Report"}' --target 1
 eo-ctl call word.getTitle --scope '{}' --target 1
 eo-ctl allowlist
+```
+
+**PDF example session:**
+```bash
+eo-ctl connect ~/Documents/invoice.pdf
+eo-ctl call pdf.getAllFields --scope '{}' --target 2
+eo-ctl call pdf.setFieldValue --scope '{"key":"Total","value":"500.00"}' --target 2
+eo-ctl call pdf.addHighlight --scope '{"page":0,"rect":[10,10,100,20]}' --target 2
 ```
 
 ---
@@ -980,7 +988,181 @@ Returns the property's value, or `null` if not set.
 
 ---
 
-## 6. Not-yet-implemented commands (reference)
+## 6. PDF commands (`pdf.*`)
+
+Unlike Word/Cell/Slide, most PDF commands take a `page` field (0-based index) since PDF content is addressed per-page via `ApiDocument.GetPage(nPos)`, not per-document — an out-of-range `page` throws `SCRIPT_EXCEPTION`.
+
+### Form field read/write
+
+#### `pdf.getAllFields`
+No scope fields. Returns an array of field **names** (`ApiField.GetFullName()`), not object handles — these names are what `key` elsewhere in this section expects.
+```json
+{"command":"pdf.getAllFields","scope":{}}
+→ {"ok":true,"result":["Name","Total","Agree"]}
+```
+
+#### `pdf.getFieldValue`
+| Field | Type | Required |
+|---|---|---|
+| `key` | string | yes, non-empty |
+
+Returns the field's value. Throws `SCRIPT_EXCEPTION` if `key` doesn't name a real field.
+
+#### `pdf.setFieldValue`
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `key` | string | yes, non-empty | |
+| `value` | string | yes (empty allowed) | `SetValue` stringifies its argument — a checkbox's checked state is the export string `"Yes"`/`"Off"`, not a JSON boolean |
+
+Throws `SCRIPT_EXCEPTION` if `key` doesn't name a real field.
+```json
+{"command":"pdf.setFieldValue","scope":{"key":"Total","value":"500.00"}}
+→ {"ok":true,"result":"500.00"}
+```
+
+### Annotations
+
+`rect` throughout this section is a flat `[x1,y1,x2,y2]` array with `x1<x2` and `y1<y2` — reject anything else client-side, the schema check only verifies shape (4 numbers), not the ordering invariant; a degenerate rect surfaces as `SCRIPT_EXCEPTION`.
+
+#### `pdf.getAllAnnots`
+| Field | Type | Required |
+|---|---|---|
+| `page` | integer ≥0 | yes |
+
+Returns an array of annotation class-type strings (`ApiBaseAnnotation.GetClassType()`), one per annotation currently on the page — the only allowlisted way to verify the `pdf.add*` commands below took effect.
+
+#### `pdf.addHighlight` / `pdf.addUnderline` / `pdf.addStrikeout`
+| Field | Type | Required |
+|---|---|---|
+| `page` | integer ≥0 | yes |
+| `rect` | `[number,number,number,number]` | yes |
+
+Returns `true`.
+```json
+{"command":"pdf.addHighlight","scope":{"page":0,"rect":[10,10,100,20]}}
+→ {"ok":true,"result":true}
+```
+
+#### `pdf.addFreeText`
+| Field | Type | Required |
+|---|---|---|
+| `page` | integer ≥0 | yes |
+| `rect` | `[number,number,number,number]` | yes |
+| `text` | string | yes (empty allowed) |
+
+Returns `true`.
+
+#### `pdf.addInk`
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `page` | integer ≥0 | yes | |
+| `rect` | `[number,number,number,number]` | yes | bounding box |
+| `paths` | array of paths, each an array of `[x,y]` pairs | yes, non-empty | e.g. `[[[10,10],[20,20],[30,10]]]` — converted internally to the `{x,y}` object shape `CreateInkAnnot` actually requires |
+
+Returns `true`.
+```json
+{"command":"pdf.addInk","scope":{"page":0,"rect":[10,10,40,40],"paths":[[[10,10],[20,20],[30,10]]]}}
+→ {"ok":true,"result":true}
+```
+
+#### `pdf.addStamp` — **not implemented**
+`Api.CreateStampAnnot(rect, type, author, creationDate)` requires `type` to be a value from `AscPDF.STAMP_TYPES`; that enum's definition wasn't locatable in the vendored `sdkjs` source, so this command is deliberately absent from the allowlist rather than guessed. See §7 below.
+
+### Text search / selection / extraction
+
+#### `pdf.searchText`
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `page` | integer ≥0 | yes | |
+| `text` | string | yes, non-empty | |
+| `matchCase` | boolean | no, default `false` | |
+| `wholeWords` | boolean | no, default `false` | |
+
+Returns an array of `Quad`s — each already a flat 8-number tuple `[x1,y1,x2,y2,x3,y3,x4,y4]` (top-left → top-right → bottom-left → bottom-right), one per match. Empty array if nothing matches (not an error).
+
+#### `pdf.setSelection`
+| Field | Type | Required |
+|---|---|---|
+| `page` | integer ≥0 | yes |
+| `startPoint` | `{x: number, y: number}` | yes |
+| `endPoint` | `{x: number, y: number}` | yes |
+
+Returns `boolean`. Must be called before `pdf.getSelectedText` has anything to return.
+
+#### `pdf.getSelectedText`
+| Field | Type | Required |
+|---|---|---|
+| `page` | integer ≥0 | yes |
+
+Returns the currently-selected text (`string`, possibly empty if nothing is selected). Takes no rect/range — it reads whatever selection is already active on the page, set via `pdf.setSelection`.
+```json
+{"command":"pdf.setSelection","scope":{"page":0,"startPoint":{"x":10,"y":10},"endPoint":{"x":50,"y":20}}}
+→ {"ok":true,"result":true}
+{"command":"pdf.getSelectedText","scope":{"page":0}}
+→ {"ok":true,"result":"Total"}
+```
+
+#### `pdf.recognizeContent`
+| Field | Type | Required |
+|---|---|---|
+| `page` | integer ≥0 | yes |
+
+Recognizes page content (e.g. an image-only page) into editable drawing objects and returns their class-type strings (one per newly recognized drawing) — this is content recognition, not OCR-to-text.
+
+### Redaction
+
+Two-step workflow: `pdf.addRedact`/`pdf.searchAndRedact` only *mark* content as pending redaction; `pdf.applyRedact` is what actually removes it, document-wide (there is no per-page apply).
+
+#### `pdf.addRedact`
+| Field | Type | Required |
+|---|---|---|
+| `page` | integer ≥0 | yes |
+| `rect` | `[number,number,number,number]` | yes |
+
+Returns `true`. Creates a pending redact annotation; does not remove content by itself.
+
+#### `pdf.searchAndRedact`
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `text` | string | yes, non-empty | |
+| `matchCase` | boolean | no, default `false` | |
+| `wholeWords` | boolean | no, default `false` | |
+
+Document-wide (no `page` field). Marks every match as pending redact and returns the number marked (`integer`).
+```json
+{"command":"pdf.searchAndRedact","scope":{"text":"SSN:"}}
+→ {"ok":true,"result":2}
+```
+
+#### `pdf.applyRedact`
+No scope fields. Strips all currently-pending redactions across the whole document. Returns `true`. Throws `SCRIPT_EXCEPTION` ("Has no redact to apply") if nothing is pending.
+
+### Page operations
+
+#### `pdf.getPageCount`
+No scope fields. Returns the document's page count (`integer`).
+
+#### `pdf.addPage`
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `index` | integer ≥0 | yes | position to insert at; clones the size of the page at `index-1` (or `index`) |
+
+Returns the new page's index (`integer`).
+```json
+{"command":"pdf.addPage","scope":{"index":1}}
+→ {"ok":true,"result":1}
+```
+
+#### `pdf.removePage`
+| Field | Type | Required |
+|---|---|---|
+| `index` | integer ≥0 | yes |
+
+Returns `true`. Throws `SCRIPT_EXCEPTION` if `index` is out of range (the underlying API returns `false` rather than throwing; the command script converts this to a thrown error for the same `SCRIPT_EXCEPTION` contract used everywhere else in this reference).
+
+---
+
+## 7. Not-yet-implemented commands (reference)
 
 These are documented in the plan/test-design docs but deliberately absent from the allowlist because their backing API needs a factory or capability not yet confirmed in the vendored `sdkjs` source. Calling them returns `NOT_ALLOWLISTED`.
 
@@ -991,5 +1173,4 @@ These are documented in the plan/test-design docs but deliberately absent from t
 | `slide.applyTheme` | `Api.CreateTheme` needs three further factory-built scheme objects not confirmed. |
 | `slide.setBackground` | No solid-fill factory confirmed in `sdkjs/slide/apiBuilder.js`. |
 | `slide.createTable` | No public API to target an arbitrary slide as "current" before table creation. |
-
-PDF commands are not yet implemented at all — PDF is next in the build order after Slide's §6 gate.
+| `pdf.addStamp` | `Api.CreateStampAnnot`'s `type` parameter requires a value from `AscPDF.STAMP_TYPES`; that enum's definition wasn't locatable in the vendored `sdkjs` source. |
