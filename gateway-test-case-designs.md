@@ -364,14 +364,16 @@ Fixture convention: "3-slide deck" = presentation with 3 slides, slide 0 has 1 t
 
 ### D1. Slide management
 
+Backing API confirmed: `ApiPresentation.AddSlide(oSlide, nIndex)` (`sdkjs/slide/apiBuilder.js:1365`) needs an actual `ApiSlide` built via `Api.CreateSlide()` (805), not a bare index -- an out-of-range `nIndex` is silently treated as "append at end", not an error. `RemoveSlides(nStart, nCount)` (1564) takes a **contiguous start+count range**, not an arbitrary `indices` array as originally planned -- and **returns `false` rather than throwing** for an out-of-range `nStart` (the whole removal block is skipped silently); the command's script converts that `false` into a thrown error, same pattern as elsewhere in this document. `ApiSlide.Duplicate(nPos)`/`MoveTo(nPos)` (3853, 3872) are called on a resolved `ApiSlide` (via `ApiPresentation.GetSlideByIndex`, 1324), not `ApiPresentation` directly.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| D1.1 | 3-slide deck | `slide.addSlide{index:1}` | deck now has 4 slides; new slide is at position 1 | Positive |
-| D1.2 | 3-slide deck | `slide.removeSlides{indices:[1]}` | deck now has 2 slides; former slide 2 is now slide 1 | Positive |
-| D1.3 | 3-slide deck | `slide.duplicate{index:0}` | deck now has 4 slides; slide at index 1 has content matching original slide 0 | Positive |
-| D1.4 | 3-slide deck | `slide.moveTo{index:0, newIndex:2}` | slide originally at 0 is now at 2; others shift accordingly | Positive |
-| D1.5 | 3-slide deck | `slide.removeSlides{indices:[99]}` (out of range) | `Error{code: SCRIPT_EXCEPTION}` | Negative |
-| D1.6 | 1-slide deck (only slide) | `slide.removeSlides{indices:[0]}` | either succeeds (deck with 0 slides, if the app allows it) or `Error{code: SCRIPT_EXCEPTION}` — pin behavior since a presentation with 0 slides may be invalid | Positive or Negative (decide) |
+| D1.1 | 3-slide deck | `slide.addSlide{index:1}` | returns `null`; deck now has 4 slides, new slide at position 1 | Positive |
+| D1.2 | 3-slide deck | `slide.removeSlides{start:1, count:1}` | returns `true`; deck now has 2 slides; former slide 2 is now slide 1 | Positive |
+| D1.3 | 3-slide deck | `slide.duplicate{index:0}` | returns `true`; deck now has 4 slides; slide at index 1 has content matching original slide 0 | Positive |
+| D1.4 | 3-slide deck | `slide.moveTo{index:0, newIndex:2}` | returns `true`; slide originally at 0 is now at 2; others shift accordingly | Positive |
+| D1.5 | 3-slide deck | `slide.removeSlides{start:99, count:1}` (out of range) | `Error{code: SCRIPT_EXCEPTION}` (converted from `RemoveSlides`'s own `false` return, since the underlying method itself doesn't throw) | Negative |
+| D1.6 | 1-slide deck (only slide) | `slide.removeSlides{start:0, count:1}` | returns `true` -- `RemoveSlides`'s own bounds check (`nStart < GetSlidesCount()`) has no special guard against reaching 0 slides, confirmed in source; whether a 0-slide presentation is a stable runtime state isn't verifiable from source alone, deferred to the §6 build/deploy gate | Positive |
 
 ### D2. Enumerate slide content
 
