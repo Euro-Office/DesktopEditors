@@ -398,12 +398,14 @@ Backing API confirmed: layouts/masters/themes have no id-string addressing at al
 | D3.3 | deck with 1 master | `slide.addMaster{position:1}` | returns `true`; deck's master count increases by 1 | Positive |
 | D3.4 | *(deferred -- see note above)* | `slide.applyTheme{...}` | not implemented in this pass | Deferred |
 
-### D4. Set background, transitions
+### D4. Set transitions (background deferred)
+
+Backing API confirmed: `ApiSlide.SetBackground(oApiFill)` (`sdkjs/slide/apiBuilder.js:3723`) needs a real `ApiFill` object -- no `Api.CreateSolidFill`-style factory was found in this file (only `Api.CreateNoFill`, confirmed, and `Api.CreateStroke`), so **`slide.setBackground` is deferred, not guessed**, same discipline as `word.addCheckBoxForm` (§B12), `cell.addShape` (§C11), `slide.applyTheme` (§D3). `ApiSlide.SetSlideShowTransition(transition)` (4389) needs a real `ApiSlideShowTransition` from `Api.CreateSlideShowTransition()` (1075, no-arg, confirmed) configured via `SetEntryEffect(entryEffectName)`/`SetDuration(duration)` (4848, 4902) -- the field is `entryEffect`, not `type`, and `SetEntryEffect` returns `false` (not a throw) for an unsupported name.
 
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| D4.1 | slide default (no) background | `slide.setBackground{index:0, color:"#00FF00"}` | background reads back `#00FF00` | Positive |
-| D4.2 | slide, no transition | `slide.setTransition{index:0, type:"fade", duration:500}` | transition reads back `{type:"fade", duration:500}` | Positive |
+| D4.1 | *(deferred -- see note above)* | `slide.setBackground{...}` | not implemented in this pass | Deferred |
+| D4.2 | slide, no transition | `slide.setTransition{index:0, entryEffect:"effectFade", duration:500}` | returns `true` | Positive |
 
 ### D5. Insert shapes/text boxes with positioning
 
