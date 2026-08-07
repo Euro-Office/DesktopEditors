@@ -480,13 +480,15 @@ Fixture convention: "1-page PDF" = a single-page PDF with one text form field "N
 
 ### E1. Form field read/write
 
+Backing API confirmed: `ApiDocument.GetAllFields()` (`sdkjs/pdf/apiBuilder.js:1426`) returns `ApiField[]` (concrete subclasses -- `ApiTextField`/`ApiCheckboxField`/`ApiComboboxField`/`ApiRadiobuttonField`/`ApiListboxField`/`ApiButtonField`, resolved via `private_GetFieldApi`, 7700), not JSON-serializable -- returns field **names** (`GetFullName()`, 1828) instead, same established pattern. `GetValue()`/`SetValue(sValue)` (1921, 1902) are on the shared `ApiBaseField` base class -- uniform across text/checkbox/combobox, so one pair of commands covers all field types; `SetValue` stringifies whatever is passed (`sValue.toString()`), so a checkbox's "checked" state is whatever string value the PDF's own export-value convention uses (commonly `"Yes"`/`"Off"`), not a JSON boolean -- corrected `value` to a string field. `ApiDocument.GetFieldByName(sName)` (1452) calls `.IsWidget()` on whatever `CPDFDoc.GetField` returns with no null-check of its own -- an unknown name throws a plain `TypeError` from that access, which is why E1.4 is `SCRIPT_EXCEPTION` without the command needing extra logic.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| E1.1 | 1-page PDF, field "Name" empty | `pdf.getAllFields{}` | returns 1 field, key `"Name"`, type text | Positive |
-| E1.2 | field "Name" empty | `pdf.setFieldValue{key:"Name", value:"Alice"}` | `pdf.getAllFields{}` shows field "Name" value `"Alice"` | Positive |
-| E1.3 | fixture with 1 checkbox field "Agree", unchecked | `pdf.setFieldValue{key:"Agree", value:true}` | field reads back checked | Positive |
-| E1.4 | 1-page PDF | `pdf.setFieldValue{key:"DoesNotExist", value:"x"}` | `Error{code: SCRIPT_EXCEPTION}` (no such field) | Negative |
-| E1.5 | fixture with 1 combobox field "Country" with options ["US","UK"] | `pdf.setFieldValue{key:"Country", value:"FR"}` (not in the option list) | either rejected (`Error{code: SCRIPT_EXCEPTION}`) or accepted as free text depending on the underlying combobox's `editable` flag — pin behavior at implementation | Positive or Negative (decide) |
+| E1.1 | 1-page PDF, field "Name" empty | `pdf.getAllFields{}` | returns `["Name"]` | Positive |
+| E1.2 | field "Name" empty | `pdf.setFieldValue{key:"Name", value:"Alice"}` | returns `true`; `pdf.getFieldValue{key:"Name"}` returns `"Alice"` | Positive |
+| E1.3 | fixture with 1 checkbox field "Agree", unchecked | `pdf.setFieldValue{key:"Agree", value:"Yes"}` | returns `true`; `pdf.getFieldValue{key:"Agree"}` returns `"Yes"` (checkbox "checked" is a string export value, not a JSON boolean) | Positive |
+| E1.4 | 1-page PDF | `pdf.setFieldValue{key:"DoesNotExist", value:"x"}` | `Error{code: SCRIPT_EXCEPTION}` (no such field -- `GetFieldByName` throws on the missing field's own `.IsWidget()` access, not a check this command adds) | Negative |
+| E1.5 | fixture with 1 combobox field "Country" with options ["US","UK"] | `pdf.setFieldValue{key:"Country", value:"FR"}` (not in the option list) | `SetValue` has no option-membership check in source -- accepted as free text; deferred to the §6 build/deploy gate whether the PDF renderer itself later rejects it | Positive (boundary) |
 
 ### E2. Annotations
 
