@@ -465,10 +465,12 @@ Backing API confirmed: `ApiSlide.AddComment(posX, posY, text, author, userId)` (
 
 ### D11. Document properties
 
+Backing API confirmed: `ApiPresentation.GetDocumentInfo()` (`sdkjs/slide/apiBuilder.js:1849`) returns a **plain JS object of primitives/string arrays** -- already JSON-safe, no conversion needed, unlike almost everything else in this document. `GetCustomProperties()` (1936) returns the same shared `ApiCustomProperties` class as Word (`Get(name)`/`Add(name,value)`, no `GetAll`, §B1) -- `presentation.getCustomProperties` corrected to `presentation.getCustomProperty{name}` (singular), same fix as `word.getCustomProperty`.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| D11.1 | fresh deck | `presentation.getDocumentInfo{}` | returns a well-formed info object (title/author/etc, even if defaults) | Positive |
-| D11.2 | fresh deck, custom prop set via fixture | `presentation.getCustomProperties{}` | returns the fixture's custom properties | Positive |
+| D11.1 | fresh deck | `presentation.getDocumentInfo{}` | returns the info object directly (`{Application, Created, LastModified, LastModifiedBy, Authors, Title, Tags, Subject, Comment, ...}`, even if fields are empty defaults) | Positive |
+| D11.2 | fresh deck, custom prop "Reviewed"="true" set via fixture | `presentation.getCustomProperty{name:"Reviewed"}` | returns `"true"` | Positive |
 
 ---
 
