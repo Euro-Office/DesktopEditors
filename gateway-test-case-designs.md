@@ -429,9 +429,11 @@ Backing API confirmed: `Api.CreateShape(sType, nWidth, nHeight, oFill, oStroke)`
 
 ### D7. Insert images
 
+Backing API confirmed: `Api.CreateImage(sImageSrc, nWidth, nHeight)` (`sdkjs/slide/apiBuilder.js:825`) matches the Word/Cell precedent exactly -- `sImageSrc` is a URL or base64 data URI, not a local file path (correcting the originally-planned `path`, same fix as `word.createImage` §B9). No position param -- attached via `ApiSlide.AddObject` (§D5) then positioned via `ApiDrawing.SetPosition` (§D5), same two-step pattern as `slide.createShape`.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| D7.1 | blank slide, fixture image | `slide.createImage{index:0, path:"<fixture.png>", x:0, y:0, width:100, height:100}` | `slide.getAllImages{index:0}` length 1 | Positive |
+| D7.1 | blank slide, valid base64-encoded PNG fixture | `slide.createImage{index:0, imageSrc:"data:image/png;base64,<fixture>", x:0, y:0, width:914400, height:914400}` | returns `true` | Positive |
 
 ### D8. Table creation and editing
 
