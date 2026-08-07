@@ -524,10 +524,13 @@ The original design's `pdf.getSelectedText{rect:...}` doesn't match the real API
 
 ### E4. Redaction
 
+Backing API confirmed a two-step workflow, not the original design's single `pdf.applyRedact{page,rect}` call: `Api.CreateRedactAnnot(rect)` (`sdkjs/pdf/apiBuilder.js:1123`) only creates a *pending* redact annotation (attached via `ApiPage.AddObject`, same as every §E2 annotation) -- it does not remove content by itself. `ApiDocument.ApplyRedact()` (1507) is the call that actually strips the marked content, and it throws (`SCRIPT_EXCEPTION`) if nothing is pending -- there is no per-page apply, it's document-wide. Renamed the create step to `pdf.addRedact{page,rect}` to distinguish it from the actual `pdf.applyRedact{}` (now takes no params). `ApiDocument.SearchAndRedact(props)` (1478) takes the same `SearchProps` shape as `pdf.searchText` and marks every doc-wide match as pending in one call, returning `ApiRedactAnnotation[]` -- converted to a plain count in `pdf.searchAndRedact`'s result, since every element's `GetClassType()` would just repeat `"redact"`.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| E4.1 | page contains "SSN: 123-45-6789" | `pdf.applyRedact{page:0, rect:[<bounds around the SSN>]}` | subsequent `pdf.search{page:0, text:"123-45-6789"}` returns 0 matches; extracted text no longer contains it | Positive |
-| E4.2 | page contains "SSN: 123-45-6789" and "SSN: 987-65-4321" | `pdf.searchAndRedact{text:"SSN:"}` (pattern-based redaction across whole doc) | both SSN lines are redacted; a benign unrelated "SSN" false-positive-free page is unaffected | Positive |
+| E4.1 | page contains "SSN: 123-45-6789" | `pdf.addRedact{page:0, rect:[<bounds around the SSN>]}` then `pdf.applyRedact{}` | `addRedact` returns `true`; `applyRedact` returns `true`; subsequent `pdf.searchText{page:0, text:"123-45-6789"}` returns an empty array; extracted text no longer contains it | Positive |
+| E4.2 | page contains "SSN: 123-45-6789" and "SSN: 987-65-4321", no pending redacts | `pdf.searchAndRedact{text:"SSN:"}` then `pdf.applyRedact{}` | `searchAndRedact` returns `2`; `applyRedact` returns `true`; both SSN lines are redacted; a benign unrelated page containing no "SSN:" match is unaffected | Positive |
+| E4.3 | fresh document, no pending redacts | `pdf.applyRedact{}` | `Error{code: SCRIPT_EXCEPTION}` ("Has no redact to apply") | Negative |
 | E4.3 | page with no matching text | `pdf.searchAndRedact{text:"NOT-PRESENT"}` | succeeds as a no-op, 0 redactions applied, not an error | Positive (boundary) |
 
 ### E5. Page operations
