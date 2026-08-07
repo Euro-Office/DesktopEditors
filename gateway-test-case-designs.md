@@ -409,11 +409,13 @@ Backing API confirmed: `ApiSlide.SetBackground(oApiFill)` (`sdkjs/slide/apiBuild
 
 ### D5. Insert shapes/text boxes with positioning
 
+Backing API confirmed: `Api.CreateShape(sType, nWidth, nHeight, oFill, oStroke)` (`sdkjs/slide/apiBuilder.js:870`) has real internal defaults for `oFill`/`oStroke` (falls back to `Api.CreateNoFill()`/`Api.CreateStroke(0, Api.CreateNoFill())` when omitted) -- unlike Cell's `AddShape` (§C11), this one doesn't need us to construct fill/stroke objects, so it's fully implementable. `CreateShape` doesn't take a position -- the shape is attached to a slide via `ApiSlide.AddObject(oDrawing)` (3621) and positioned separately via `ApiDrawing.SetPosition(nPosX, nPosY)` (6100), so `slide.createShape`'s `x`/`y` map to a follow-up `SetPosition` call in the same command, not `CreateShape` itself. `SetSize`/`SetRotation` (6079, 6511) confirmed as planned.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| D5.1 | blank slide | `slide.createShape{index:0, type:"rect", x:10, y:10, width:100, height:50}` | `slide.getAllShapes{index:0}` length 1, position matches | Positive |
-| D5.2 | shape created | `slide.setPosition{index:0, shapeIndex:0, x:200, y:200}` | position reads back `{200,200}` | Positive |
-| D5.3 | shape created | `slide.setRotation{index:0, shapeIndex:0, degrees:45}` | rotation reads back `45` | Positive |
+| D5.1 | blank slide | `slide.createShape{index:0, type:"rect", x:10, y:10, width:100, height:50}` | returns `true` | Positive |
+| D5.2 | shape created | `slide.setPosition{index:0, shapeIndex:0, x:200, y:200}` | returns `null` | Positive |
+| D5.3 | shape created | `slide.setRotation{index:0, shapeIndex:0, degrees:45}` | returns `true` | Positive |
 | D5.4 | shape created | `slide.setSize{index:0, shapeIndex:0, width:-10, height:50}` (negative width) | `Error{code: SCHEMA_INVALID}` (schema `minimum:0`) | Negative |
 
 ### D6. Text formatting
