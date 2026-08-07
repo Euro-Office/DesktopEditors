@@ -456,10 +456,12 @@ Backing API confirmed: `ApiSlide.AddNotesText(sText)` (`sdkjs/slide/apiBuilder.j
 
 ### D10. Comments
 
+Backing API confirmed: `ApiSlide.AddComment(posX, posY, text, author, userId)` (`sdkjs/slide/apiBuilder.js:3649`) takes an EMU position -- `x`/`y` added to the originally-planned scope, which omitted them. `ApiPresentation.GetAllComments()` (1697) returns `ApiComment[]` via the same shared `ApiComment` class as Word (`GetText`/`GetAuthorName`, §B13) -- returned as plain `{text, author}` objects, same established pattern.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| D10.1 | slide 0, no comments | `slide.addComment{index:0, text:"fix typo", author:"peter"}` | `presentation.getAllComments{}` length 1, matches text/author, references slide 0 | Positive |
-| D10.2 | deck with no comments anywhere | `presentation.getAllComments{}` | returns empty array, not an error | Positive (boundary) |
+| D10.1 | slide 0, no comments | `slide.addComment{index:0, x:0, y:0, text:"fix typo", author:"peter"}` | returns `true`; `presentation.getAllComments{}` returns `[{text:"fix typo", author:"peter"}]` | Positive |
+| D10.2 | deck with no comments anywhere | `presentation.getAllComments{}` | returns `[]`, not an error | Positive (boundary) |
 
 ### D11. Document properties
 
