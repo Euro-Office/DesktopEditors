@@ -387,13 +387,16 @@ Backing API confirmed: `ApiSlide.GetAllShapes/GetAllImages/GetAllTables/GetAllCh
 | D2.4 | same fixture | `slide.getAllCharts{index:0}` | returns `[0]` | Positive |
 | D2.5 | blank slide | `slide.getAllShapes{index:2}` (empty slide) | returns empty array, not an error | Positive (boundary) |
 
-### D3. Apply layouts, masters, themes
+### D3. Apply layouts, masters, themes (theme application deferred)
+
+Backing API confirmed: layouts/masters/themes have no id-string addressing at all -- `ApiSlide.GetLayout()`/`ApplyLayout(oLayout)` (`sdkjs/slide/apiBuilder.js:4092,3800`) work with real `ApiLayout` objects, `ApiPresentation.AddMaster(nPos, oApiMaster)` (1522) needs a real `ApiMaster` (from `Api.CreateMaster(oTheme)`, 553), and `ApplyTheme(oApiTheme)` (1545) needs a real `ApiTheme`. `Api.CreateTheme(sName, oMaster, oClrScheme, oFormatScheme, oFontScheme)` (640) requires **three further factory-built objects** (`ApiThemeColorScheme`/`ApiThemeFormatScheme`/`ApiThemeFontScheme`) whose own constructors weren't confirmed in this pass -- **`slide.applyTheme` is deferred, not guessed**, same discipline as `word.addCheckBoxForm` (§B12) and `cell.addShape` (§C11). `slide.applyLayout` is redesigned around borrowing an already-resolved layout from another slide (`GetLayout()` → `ApplyLayout()`), which only needs methods already confirmed, rather than a `layoutId` string that doesn't correspond to any real lookup. `slide.addMaster` uses `Api.CreateMaster()` with no theme argument, relying on its own documented fallback (defaults to the presentation's existing master-0 theme, or the current theme if none) rather than us constructing one.
 
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| D3.1 | slide with default layout | `slide.getLayout{index:0}` then `slide.applyLayout{index:0, layoutId:<a different known layout>}` | slide's layout reads back the new layout id | Positive |
-| D3.2 | deck with 1 master | `slide.addMaster{}` | deck's master count increases by 1 | Positive |
-| D3.3 | deck with default theme | `slide.applyTheme{themeId:"Office"}` | deck's active theme reads back `"Office"` | Positive |
+| D3.1 | slide with default layout | `slide.getLayout{index:0}` | returns `true` (has a layout) | Positive |
+| D3.2 | Two slides with different layouts | `slide.applyLayout{index:0, fromIndex:1}` | returns `true`; slide 0 now uses slide 1's layout | Positive |
+| D3.3 | deck with 1 master | `slide.addMaster{position:1}` | returns `true`; deck's master count increases by 1 | Positive |
+| D3.4 | *(deferred -- see note above)* | `slide.applyTheme{...}` | not implemented in this pass | Deferred |
 
 ### D4. Set background, transitions
 
