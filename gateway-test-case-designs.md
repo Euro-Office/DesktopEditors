@@ -509,12 +509,18 @@ Backing API confirmed: `Api.CreateHighlightAnnot(rect)`/`CreateUnderlineAnnot(re
 
 ### E3. Text search/extraction
 
+Backing API confirmed: `ApiPage.Search(props)` (`sdkjs/pdf/apiBuilder.js:1659`) takes a `SearchProps` object (`{text, matchCase, wholeWords}`, typedef at 267) and returns `Quad[]` -- a `Quad` (typedef at 234) is already a flat 8-number tuple `[x1,y1,x2,y2,x3,y3,x4,y4]`, a plain array with no `Api*` wrapper, so it round-trips through CDP `returnByValue` unmodified (unlike every other read command in this file). Renamed from the original design's `pdf.search` to `pdf.searchText` for symmetry with `pdf.getSelectedText`/`pdf.setSelection`, and `matchCase`/`wholeWords` added as optional scope fields since `SearchProps` supports them.
+
+The original design's `pdf.getSelectedText{rect:...}` doesn't match the real API: `ApiPage.GetSelectedText()` (1757) takes no arguments and just reads whatever the page's *current selection* is -- there is no rect parameter. A selection must be established first via `ApiPage.SetSelection(startPoint, endPoint)` (1690, added here, not in the original design), which takes two `Point` (`{x,y}`) objects (`private_CheckPoint`, 8147) rather than a rect. E3.2 is corrected below to a two-step `pdf.setSelection` + `pdf.getSelectedText` sequence.
+
+`pdf.recognizeContent` maps to `ApiPage.RecognizeContent()` (1767), which returns `ApiDrawing[]`, not OCR'd text -- the original design's "returns recognized text (OCR)... matching ground truth" expectation doesn't match what this method does; it converts page content (e.g. an image-only page) into editable drawing objects. Corrected to check drawing count/class-type instead (`GetClassType()`, same read-back pattern as `pdf.getAllAnnots` in §E2), since `ApiDrawing` isn't JSON-serializable.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| E3.1 | page contains "Invoice Total: $500" | `pdf.search{page:0, text:"Total"}` | returns 1 match with correct location | Positive |
-| E3.2 | page contains "Invoice Total: $500" | `pdf.getSelectedText{page:0, rect:[<bounds around "Total">]}` | returns `"Total"` | Positive |
-| E3.3 | page with no matching text | `pdf.search{page:0, text:"zzz-not-present"}` | returns empty array, not an error | Positive (boundary) |
-| E3.4 | scanned/image-only page (no text layer) | `pdf.recognizeContent{page:0}` | returns recognized text (OCR) matching the fixture's known ground truth, within reasonable tolerance | Positive |
+| E3.1 | page contains "Invoice Total: $500" | `pdf.searchText{page:0, text:"Total"}` | returns an array with 1 `Quad` (8-number array) | Positive |
+| E3.2 | page contains "Invoice Total: $500" | `pdf.setSelection{page:0, startPoint:{x:<start of "Total">,y:...}, endPoint:{x:<end of "Total">,y:...}}` then `pdf.getSelectedText{page:0}` | `setSelection` returns `true`; `getSelectedText` returns `"Total"` | Positive |
+| E3.3 | page with no matching text | `pdf.searchText{page:0, text:"zzz-not-present"}` | returns empty array, not an error | Positive (boundary) |
+| E3.4 | scanned/image-only page (no text layer, no existing drawings) | `pdf.recognizeContent{page:0}` | returns a non-empty array of class-type strings for the newly recognized drawings | Positive |
 
 ### E4. Redaction
 
