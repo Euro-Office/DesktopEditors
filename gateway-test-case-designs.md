@@ -377,12 +377,14 @@ Backing API confirmed: `ApiPresentation.AddSlide(oSlide, nIndex)` (`sdkjs/slide/
 
 ### D2. Enumerate slide content
 
+Backing API confirmed: `ApiSlide.GetAllShapes/GetAllImages/GetAllTables/GetAllCharts` (`sdkjs/slide/apiBuilder.js:4140,4155,4197,4169`) match the plan exactly, each returning `Api*[]` -- not JSON-serializable, same established pattern as `word.getAllTables` (§B2) -- so these return index arrays (`0..length-1`) instead. `index` addresses the slide via `ApiPresentation.GetSlideByIndex` (§D1's resolveSlide), not the slide's content directly.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| D2.1 | Slide with 2 shapes, 1 image, 1 table, 1 chart | `slide.getAllShapes{index:0}` | length 2 | Positive |
-| D2.2 | same fixture | `slide.getAllImages{index:0}` | length 1 | Positive |
-| D2.3 | same fixture | `slide.getAllTables{index:0}` | length 1 | Positive |
-| D2.4 | same fixture | `slide.getAllCharts{index:0}` | length 1 | Positive |
+| D2.1 | Slide with 2 shapes, 1 image, 1 table, 1 chart | `slide.getAllShapes{index:0}` | returns `[0,1]` | Positive |
+| D2.2 | same fixture | `slide.getAllImages{index:0}` | returns `[0]` | Positive |
+| D2.3 | same fixture | `slide.getAllTables{index:0}` | returns `[0]` | Positive |
+| D2.4 | same fixture | `slide.getAllCharts{index:0}` | returns `[0]` | Positive |
 | D2.5 | blank slide | `slide.getAllShapes{index:2}` (empty slide) | returns empty array, not an error | Positive (boundary) |
 
 ### D3. Apply layouts, masters, themes
