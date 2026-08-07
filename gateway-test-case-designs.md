@@ -420,12 +420,12 @@ Backing API confirmed: `Api.CreateShape(sType, nWidth, nHeight, oFill, oStroke)`
 
 ### D6. Text formatting
 
-Same command handlers as Word's `ApiTextPr.SetBold/SetFontFamily` per the plan's note — these test cases exist to prove the *slide-side target resolution* works, not to re-derive formatting semantics already covered in B4.
+`ApiRun.SetBold`/`SetFontFamily` are shared classes with Word (confirmed absent from `sdkjs/slide/apiBuilder.js` itself, so they must come from a common file included by all three editors, per the plan's own note) -- these test cases exist to prove the *slide-side target resolution* works, not to re-derive formatting semantics already covered in §B4. Target resolution: `ApiShape.GetContent()` (`sdkjs/slide/apiBuilder.js:6975`, `GetDocContent` is its deprecated alias) returns an `ApiDocumentContent`, navigated the same `GetElement(paraIndex).GetElement(runIndex)` chain as Word (§B3/§B4) -- the originally-planned scope was missing `paraIndex` (a text box's run still lives inside a paragraph), added below.
 
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| D6.1 | slide 0 has 1 text box with 1 run | `slide.setBold{index:0, shapeIndex:0, runIndex:0, bold:true}` | run's bold reads back `true` | Positive |
-| D6.2 | same fixture | `slide.setFontFamily{index:0, shapeIndex:0, runIndex:0, font:"Georgia"}` | font reads back `"Georgia"` | Positive |
+| D6.1 | slide 0 has 1 text box with 1 paragraph, 1 run | `slide.setBold{index:0, shapeIndex:0, paraIndex:0, runIndex:0, bold:true}` | returns `null` | Positive |
+| D6.2 | same fixture | `slide.setFontFamily{index:0, shapeIndex:0, paraIndex:0, runIndex:0, font:"Georgia"}` | returns `null` | Positive |
 
 ### D7. Insert images
 
