@@ -490,16 +490,20 @@ Backing API confirmed: `ApiDocument.GetAllFields()` (`sdkjs/pdf/apiBuilder.js:14
 | E1.4 | 1-page PDF | `pdf.setFieldValue{key:"DoesNotExist", value:"x"}` | `Error{code: SCRIPT_EXCEPTION}` (no such field -- `GetFieldByName` throws on the missing field's own `.IsWidget()` access, not a check this command adds) | Negative |
 | E1.5 | fixture with 1 combobox field "Country" with options ["US","UK"] | `pdf.setFieldValue{key:"Country", value:"FR"}` (not in the option list) | `SetValue` has no option-membership check in source -- accepted as free text; deferred to the §6 build/deploy gate whether the PDF renderer itself later rejects it | Positive (boundary) |
 
-### E2. Annotations
+### E2. Annotations (stamp deferred)
+
+Backing API confirmed: `Api.CreateHighlightAnnot(rect)`/`CreateUnderlineAnnot(rect)`/`CreateStrikeoutAnnot(rect)`/`CreateFreeTextAnnot(rect)`/`CreateInkAnnot(rect, inkPaths)` (`sdkjs/pdf/apiBuilder.js:887,1005,946,594,665`) create the annotation object; `ApiPage.AddObject(object)` (1605) attaches it to a page (throws `AscBuilder.throwException` if `object` isn't a valid `ApiBaseAnnotation`/`ApiBaseField`/`ApiDrawing`, or is already in the document). `pdf.addInk`'s originally-planned scope was missing `rect` -- `CreateInkAnnot` requires both a bounding rect and the ink path list, and `inkPaths` must be an array of paths, each an array of `{x,y}` point objects (`AscBuilder.GetArrayParameter`/`private_CheckPoint` validation confirmed in source), not the flat `[[x,y],...]` shape originally planned. Text content on `FreeText` (and any annotation, shared) via `ApiBaseAnnotation.SetContents(contents)` (4011). `pdf.getAllAnnots` (not in the original design at all) added as the read-back path via `ApiPage.GetAllAnnots()` (1636), returning class-type strings (`GetClassType()`, confirmed per-class at 4673/4989/5509/5539/5569) rather than the unserializable `ApiBaseAnnotation` handles -- without it there was no allowlisted way to verify any of E2.1-E2.5's "annotation count +1" claims.
+
+**`pdf.addStamp` is deferred, not guessed.** `Api.CreateStampAnnot(rect, type, author, creationDate)` (819) validates `type` against `Object.values(AscPDF.STAMP_TYPES)`, but that enum's actual member values (its definition file) weren't located in this pass -- `stampType:"Approved"` in the original design is a guess at a string that was never confirmed to be a real enum value.
 
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| E2.1 | 1-page PDF, no annotations, page has visible text | `pdf.addHighlight{page:0, rect:[10,10,100,20]}` | `pdf.getAllAnnots{page:0}` length 1, type highlight, matching rect | Positive |
-| E2.2 | same page | `pdf.addUnderline{page:0, rect:[10,10,100,20]}` | annotation count +1, type underline | Positive |
-| E2.3 | same page | `pdf.addStrikeout{page:0, rect:[10,10,100,20]}` | annotation count +1, type strikeout | Positive |
-| E2.4 | same page | `pdf.addFreeText{page:0, rect:[10,10,150,40], text:"Note"}` | annotation count +1, type free-text, text matches | Positive |
-| E2.5 | same page | `pdf.addInk{page:0, points:[[10,10],[20,20],[30,10]]}` | annotation count +1, type ink | Positive |
-| E2.6 | same page | `pdf.addStamp{page:0, rect:[10,10,50,50], stampType:"Approved"}` | annotation count +1, type stamp | Positive |
+| E2.1 | 1-page PDF, no annotations | `pdf.addHighlight{page:0, rect:[10,10,100,20]}` | returns `true`; `pdf.getAllAnnots{page:0}` returns `["highlight"]` (or whatever `GetClassType()` literally returns -- confirm exact string at the §6 build/deploy gate) | Positive |
+| E2.2 | same page | `pdf.addUnderline{page:0, rect:[10,10,100,20]}` | returns `true`; annotation count +1 | Positive |
+| E2.3 | same page | `pdf.addStrikeout{page:0, rect:[10,10,100,20]}` | returns `true`; annotation count +1 | Positive |
+| E2.4 | same page | `pdf.addFreeText{page:0, rect:[10,10,150,40], text:"Note"}` | returns `true`; annotation count +1 | Positive |
+| E2.5 | same page | `pdf.addInk{page:0, rect:[10,10,40,40], paths:[[[10,10],[20,20],[30,10]]]}` (array of paths, each an array of `[x,y]` pairs -- converted to the `{x,y}` object shape `CreateInkAnnot` actually requires by the command's own script) | returns `true`; annotation count +1 | Positive |
+| E2.6 | *(deferred -- see note above)* | `pdf.addStamp{...}` | not implemented in this pass | Deferred |
 | E2.7 | 1-page PDF | `pdf.addHighlight{page:5, rect:[10,10,100,20]}` (page out of range for a 1-page doc) | `Error{code: SCRIPT_EXCEPTION}` | Negative |
 | E2.8 | same page | `pdf.addHighlight{page:0, rect:[-5,-5,-1,-1]}` (degenerate/negative rect) | `Error{code: SCHEMA_INVALID}` (schema constrains rect coordinates to be non-negative and `x2>x1`, `y2>y1`) | Negative |
 
