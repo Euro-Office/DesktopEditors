@@ -447,10 +447,12 @@ Backing API confirmed: `Api.CreateTable(nCols, nRows)` (`sdkjs/slide/apiBuilder.
 
 ### D9. Speaker notes
 
+Backing API confirmed: `ApiSlide.AddNotesText(sText)` (`sdkjs/slide/apiBuilder.js:4331`) creates the notes page if missing, then calls `ApiParagraph.AddText(sText)` on its first paragraph -- **the same append-only semantics as `word.addText`** (§B3, `AddText` always appends a new run, never replaces) -- resolving D9.2's originally-open "append vs. replace" question definitively: it appends. `slide.getNotesText` (not in the original design at all) added here as the real read-back path: `GetNotesPage().GetBodyShape().GetDocContent().GetElement(0)`, then `ApiParagraph.GetText()` (shared class, confirmed in `sdkjs/word/apiBuilder.js:11261`) -- without it, D9.1's expectation ("text contains...") had no allowlisted command to verify it with.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| D9.1 | slide 0, no notes | `slide.addNotesText{index:0, text:"Remember to mention Q3"}` | `slide.getNotesPage{index:0}` text contains `"Remember to mention Q3"` | Positive |
-| D9.2 | slide 0, notes already set | `slide.addNotesText{index:0, text:"Second note"}` (appending vs. replacing — pin behavior) | notes content reflects whichever is the defined behavior (append or replace); test locks it in | Positive |
+| D9.1 | slide 0, no notes | `slide.addNotesText{index:0, text:"Remember to mention Q3"}` | returns `true`; `slide.getNotesText{index:0}` returns `"Remember to mention Q3"` | Positive |
+| D9.2 | slide 0, notes already set to "First" | `slide.addNotesText{index:0, text:"Second"}` | returns `true`; `slide.getNotesText{index:0}` now returns `"FirstSecond"` (`AddText` appends a new run with no separator inserted, confirmed in source) | Positive |
 
 ### D10. Comments
 
