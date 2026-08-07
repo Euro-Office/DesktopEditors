@@ -535,11 +535,13 @@ Backing API confirmed a two-step workflow, not the original design's single `pdf
 
 ### E5. Page operations
 
+Backing API confirmed: `ApiDocument.AddPage(nPos, nWidth, nHeight)` (`sdkjs/pdf/apiBuilder.js:1353`) clones the size of the page at `nPos-1` (falling back to `nPos`) when width/height aren't given, and returns an unserializable `ApiPage` -- converted to its index via `GetIndex()` (1582), same pattern as every other `Api*`-returning command in this file. `ApiDocument.RemovePage(nPos)` (1397) returns `false` for an out-of-range index rather than throwing -- converted to a thrown `Error` for the `SCRIPT_EXCEPTION` contract used consistently elsewhere (matches `pdf.setFieldValue`'s unknown-key handling and the equivalent §B/§C/§D corrections). E5.3's original scenario (removing a 1-page document's only remaining page, `index:0` -- itself in range, so `RemovePage`'s own out-of-range guard doesn't cover it) depends on lower-level `AscPDF.CDocument.RemovePage` behavior not confirmed in this pass -- replaced with the confirmed out-of-range case instead of leaving an unverified claim; the "can a PDF reach 0 pages this way" question is still open and deferred to the §6 build/deploy gate. `pdf.getPageCount` (not in the original design) added via `GetPagesCount()` (1414) as the only allowlisted way to verify page count changes.
+
 | ID | Setup | Input | Expected | Type |
 |---|---|---|---|---|
-| E5.1 | 1-page PDF | `pdf.addPage{index:1}` | document now has 2 pages | Positive |
-| E5.2 | 2-page PDF | `pdf.removePage{index:0}` | document now has 1 page; remaining page is what was previously page 1 | Positive |
-| E5.3 | 1-page PDF (only page) | `pdf.removePage{index:0}` | either rejected (`Error{code: SCRIPT_EXCEPTION}`, a PDF can't have 0 pages) or produces an empty/invalid document — pin behavior, this is a meaningful edge case to lock down before shipping | Negative (expected) |
+| E5.1 | 1-page PDF | `pdf.addPage{index:1}` | returns the new page's index (`1`); `pdf.getPageCount{}` now returns `2` | Positive |
+| E5.2 | 2-page PDF | `pdf.removePage{index:0}` | returns `true`; `pdf.getPageCount{}` now returns `1`; remaining page is what was previously page 1 | Positive |
+| E5.3 | 1-page PDF (only page) | `pdf.removePage{index:5}` (out of range) | `Error{code: SCRIPT_EXCEPTION}`; `pdf.getPageCount{}` still returns `1` | Negative |
 
 ---
 
