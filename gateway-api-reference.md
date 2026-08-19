@@ -34,14 +34,21 @@ Generated from the actual committed source — `desktop-apps/win-linux/src/gatew
 | `SCRIPT_EXCEPTION` | The command's script threw inside the document (bad index, unresolvable range/sheet/slide, rejected value, etc.) — this is the general "something about your *values* was wrong" bucket, distinct from `SCHEMA_INVALID`'s "something about your *shape/types* was wrong". |
 | `UNAUTHENTICATED` | Wrong or missing `auth` token — connection-level, before any command runs. |
 
-A meta command, `gateway.listCommands`, is handled directly by `GatewayServer` (not part of any editor's allowlist table) — takes no `scope`, returns a JSON array of every currently-registered command name.
+Two meta commands are handled directly by `GatewayServer` (not part of any editor's allowlist table):
+
+- **`gateway.listCommands`** — takes no `scope`, returns a JSON array of every currently-registered command name.
+- **`gateway.connect`** — `{"path": "<absolute or relative file path>"}` → `{"targetViewId": <integer>}`. A pure resolver: matches an already-open view for `path` via `CAscApplicationManager::GetViewByUrl` (checking the view's `GetUrl()`/`GetOriginalUrl()`/`GetUrlAsLocal()`, after normalizing `path` the same way `handleInputCmd` does before a view's local-file URL is set) and returns its id, or `{"targetViewId": -1}` if not open yet — **not** an error, since a client is expected to poll this after launching `DesktopEditors <path>` (see `eo-ctl connect` below). This command never opens anything itself; empty `path` returns `SCHEMA_INVALID`.
 
 ## 2. CLI (`eo-ctl`)
 
-Thin client — every subcommand just frames the request above and prints the raw response. No business logic lives in the CLI.
+Thin client — every subcommand just frames the request above and prints the raw response. No business logic lives in the CLI (the one exception, `connect`'s poll loop, is factored out into `tools/eo-ctl/src/connectlogic.h`/`.cpp`, unit-tested independently — see `tools/eo-ctl/tests/connectlogic_test.cpp`).
 
 ```bash
-# Launch DesktopEditors on a file if no gateway is already running for it, then exit 0/1.
+# Resolve <file> to a stable view id, launching DesktopEditors (or opening a new tab
+# in an already-running instance) if it isn't already open. Idempotent -- calling this
+# again for a file already open returns the same id. Prints {"targetViewId": <id>} and
+# exits 0 on success, or exits 1 (nothing printed to stdout) if it never resolves
+# within 30s.
 eo-ctl connect <file>
 
 # Send one command, print the JSON response, exit 0 on ok:true / 1 on ok:false.
@@ -51,15 +58,35 @@ eo-ctl call <command> --scope '<json>' [--target <viewId>]
 eo-ctl allowlist
 ```
 
-`--scope` defaults to `{}` if omitted; `--target` defaults to `-1` (which will fail with `TARGET_NOT_FOUND` unless the gateway is only tracking one document — pass the real view id in practice). The auth token is read automatically from `$XDG_RUNTIME_DIR/eo-gateway-<uid>.token`; never pass it on the command line.
+`--scope` defaults to `{}` if omitted; `--target` defaults to `-1` (which will fail with `TARGET_NOT_FOUND` unless the gateway is only tracking one document — pass the real view id returned by `connect` in practice). The auth token is read automatically from `$XDG_RUNTIME_DIR/eo-gateway-<uid>.token`; never pass it on the command line.
 
 **Example session:**
 ```bash
 eo-ctl connect ~/Documents/report.docx
+# → {"targetViewId":1}
 eo-ctl call word.setTitle --scope '{"title":"Q3 Report"}' --target 1
 eo-ctl call word.getTitle --scope '{}' --target 1
 eo-ctl allowlist
 ```
+
+### `connect`'s resolution algorithm
+
+`gateway.connect` never opens a file itself (see §1) — `eo-ctl connect` is what actually
+does, by launching `DesktopEditors <file>` as a subprocess and relying on
+`SingleApplication` (`win-linux/src/main.cpp`, `cascapplicationmanagerwrapper.cpp`) to
+handle both cases identically: a cold start opens `file` directly as its initial
+document; if an instance is already running, the launch forwards `file` to it via
+`sendMessage`/`receivedMessage`, and the existing instance opens it as a new tab via
+`handleInputCmd` — confirmed against the actual source, not assumed.
+
+1. If the gateway socket doesn't exist yet: launch `DesktopEditors <file>`, wait
+   (bounded, 30s) for the socket to appear. The freshly-launched instance opens `file`
+   as its initial document.
+2. Call `gateway.connect{path: file}`. If it returns a real id, done.
+3. Otherwise (socket already existed, file not open yet): launch
+   `DesktopEditors <file>` again — this is what triggers the forward-to-existing-
+   instance-and-open-a-new-tab path — then poll `gateway.connect` (200ms interval,
+   30s bounded) until it resolves or times out.
 
 **PDF example session:**
 ```bash
@@ -1174,3 +1201,18 @@ These are documented in the plan/test-design docs but deliberately absent from t
 | `slide.setBackground` | No solid-fill factory confirmed in `sdkjs/slide/apiBuilder.js`. |
 | `slide.createTable` | No public API to target an arbitrary slide as "current" before table creation. |
 | `pdf.addStamp` | `Api.CreateStampAnnot`'s `type` parameter requires a value from `AscPDF.STAMP_TYPES`; that enum's definition wasn't locatable in the vendored `sdkjs` source. |
+
+---
+
+## 8. MCP service (`eo-mcp`)
+
+`desktop-apps/win-linux/tools/eo-mcp/` — a thin MCP wrapper, spawned by an MCP host over
+stdio, talking directly to the gateway's Unix socket (not through `eo-ctl`). Three
+tools, a near-direct translation of §1/§2 above — see the design rationale in
+`~/repos/eo-mcp-service-plan.md` and usage in `tools/eo-mcp/README.md`:
+
+| Tool | Params | Wraps |
+|---|---|---|
+| `gateway_connect` | `file: string` | `eo-ctl connect`'s resolution algorithm, reimplemented client-side in JS (`gatewayClient.js`'s `connectFile`/`connectAndResolveViewId`) since it drives its own `child_process.spawn`, not `eo-ctl` as a subprocess. |
+| `gateway_call` | `command: string, scope: object, targetViewId: integer` | One gateway command call. |
+| `gateway_list_commands` | *(none)* | `gateway.listCommands`. |
