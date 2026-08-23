@@ -276,8 +276,13 @@ try {
         #}
 
         # 1c. Packaging tools via Chocolatey.
+        # Inno must be >= 6.3: inno\common.iss uses "WizardStyle=classic dynamic"
+        # plus Wizard[Small]ImageFileDynamicDark for the dark-mode wizard art, all
+        # of which 6.0-6.2.x reject ("Value of [Setup] section directive ... is
+        # invalid"). 6.7.1 is pinned to match $issTag for the unofficial language
+        # files above - keep the two in sync when bumping either one.
         if (Get-Command choco -ErrorAction SilentlyContinue) {
-            choco install innosetup --version=6.2.2 -y --no-progress
+            choco install innosetup --version=6.7.1 -y --no-progress
             choco install 7zip -y --no-progress
             if ($BuildMsi) {
                 choco install advanced-installer -y --no-progress
