@@ -1,0 +1,7 @@
+# Never needed inside any build context here — nothing is ever COPY'd from
+# these, but without this file they get scanned/uploaded on every single
+# `docker buildx bake` invocation (multi-GB, repeatedly).
+.git
+**/.git
+build/.docker-cache
+build/deploy
