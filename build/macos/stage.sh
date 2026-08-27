@@ -107,6 +107,12 @@ build_tool() {
             -DEO_CORE_TOOLS_DIR="${STAGE_DIR}/converter"
     fi
     cmake --build "${build_dir}"
+
+    # Ninja may legitimately skip the build (nothing changed since last time),
+    # which skips the POST_BUILD copy_artifacts_to_folder() too - but the
+    # destination gets deleted every run by the cleanup step below, so it must
+    # be re-copied unconditionally, not just when Ninja actually rebuilt it.
+    cp "${build_dir}/${name}" "${STAGE_DIR}/converter/${name}"
 }
 
 build_tool allfontsgen "${REPO_ROOT}/core/DesktopEditor/AllFontsGen"
@@ -163,4 +169,4 @@ rm -f "${STAGE_DIR}/converter/allfontsgen" "${STAGE_DIR}/converter/allthemesgen"
 
 echo ""
 echo "Staging complete: ${STAGE_DIR}"
-echo "Ready for: xcodebuild -project desktop-apps/macos/Euro-Office.xcodeproj -scheme Euro-Office-arm EO_MAC_STAGE_DIR=${STAGE_DIR} build"
+echo "Ready for: xcodebuild -project desktop-apps/macos/Euro-Office.xcodeproj -scheme Euro-Office-arm EO_MAC_STAGE_DIR=${STAGE_DIR} CONFIGURATION_BUILD_DIR=${REPO_ROOT}/build/macos/out build"

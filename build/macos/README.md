@@ -71,8 +71,13 @@ STAGE=/path/to/staging-root
    ```bash
    xcodebuild -project desktop-apps/macos/Euro-Office.xcodeproj \
      -scheme Euro-Office-arm -configuration Release \
-     EO_MAC_STAGE_DIR="${STAGE}" build
+     EO_MAC_STAGE_DIR="${STAGE}" \
+     CONFIGURATION_BUILD_DIR="${REPO}/build/macos/out" \
+     build
    ```
+   `Euro-Office.app` lands directly at `${REPO}/build/macos/out/Euro-Office.app` —
+   without `CONFIGURATION_BUILD_DIR`, Xcode uses its default DerivedData
+   location instead (`~/Library/Developer/Xcode/DerivedData/Euro-Office-<hash>/Build/Products/<configuration>/`).
 
 ## What `stage.sh` does
 
