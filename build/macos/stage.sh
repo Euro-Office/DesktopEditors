@@ -22,8 +22,9 @@ Usage: $(basename "$0") --stage-dir <path> --3rdparty-dir <path> [options]
 
 Required:
   --stage-dir <path>       The desktop-sdk CMake build directory (must already
-                            contain a built package/ - build desktop-sdk first,
-                            see "Build steps for a new developer" in the plan).
+                            contain a built converter/x2t - build desktop-sdk
+                            first, see "The three steps" (step 1) in
+                            build/macos/README.md).
   --3rdparty-dir <path>    EO_CORE_3RD_PARTY_DIR - where boost/icu/v8/etc. were
                             fetched to (same value used to build desktop-sdk).
 
@@ -55,27 +56,27 @@ if [ -z "${STAGE_DIR}" ] || [ -z "${EO_CORE_3RD_PARTY_DIR}" ]; then
     exit 1
 fi
 
-if [ ! -d "${STAGE_DIR}/package" ]; then
-    echo "error: ${STAGE_DIR}/package not found - build desktop-sdk first (see" 1>&2
-    echo "\"Build steps for a new developer\" in the plan). This script only stages" 1>&2
-    echo "an already-built tree, it doesn't build desktop-sdk itself." 1>&2
+if [ ! -x "${STAGE_DIR}/converter/x2t" ]; then
+    echo "error: ${STAGE_DIR}/converter/x2t not found - build desktop-sdk first" 1>&2
+    echo "(see \"The three steps\" (step 1) in build/macos/README.md). This" 1>&2
+    echo "script only stages an already-built tree, it doesn't build" 1>&2
+    echo "desktop-sdk itself." 1>&2
     exit 1
 fi
 
-if [ ! -d "${PAYLOAD_DIR}" ]; then
-    echo "error: ${PAYLOAD_DIR} not found - build/extract the desktop-common web" 1>&2
-    echo "payload first (docker buildx bake desktop-common)." 1>&2
-    exit 1
-fi
+for f in index.html editors fonts providers converter; do
+    if [ ! -e "${PAYLOAD_DIR}/${f}" ]; then
+        echo "error: ${PAYLOAD_DIR}/${f} not found - build/extract the desktop-common" 1>&2
+        echo "web payload first (see Prerequisites in build/macos/README.md for the" 1>&2
+        echo "docker buildx bake desktop-common command)." 1>&2
+        exit 1
+    fi
+done
 
 if ! command -v ninja >/dev/null 2>&1; then
     echo "error: ninja not found on PATH." 1>&2
     exit 1
 fi
-
-echo "==> Merging native build output (package/) into converter/"
-mkdir -p "${STAGE_DIR}/converter"
-cp -R "${STAGE_DIR}/package/." "${STAGE_DIR}/converter/"
 
 echo "==> Merging web payload"
 cp "${PAYLOAD_DIR}/index.html" "${STAGE_DIR}/index.html"

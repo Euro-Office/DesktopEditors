@@ -19,25 +19,35 @@ and it does **not** run the Xcode build.
 - The submodules checked out (see the [overview](../README.md#prerequisites-all-platforms)),
   including `core-fonts`.
 - Docker, for building the [common payload](../README.md#the-common-payload-again)
-  locally (`docker buildx bake desktop-common`).
+  locally. Use `type=tar`, not the default `type=local` — `type=local` is known
+  to hang indefinitely on Docker Desktop's macOS/virtiofs backend for this many
+  small files (confirmed stuck, not just slow), and `type=tar` is also what CI
+  already uses:
+  ```bash
+  docker buildx bake desktop-common --set desktop-common.output=type=tar,dest=./build/deploy/common.tar
+  mkdir -p build/deploy/common && tar -xf build/deploy/common.tar -C build/deploy/common
+  ```
 
 ## The three steps
 
-Throughout, `${VCPKG}` is your vcpkg checkout, `${EO_3RDPARTY}` is where
-third-party dependencies (boost/openssl/icu/v8/cef/qt) get fetched to, and
-`${STAGE}` is the staging root everything gets assembled into — pick paths for
-these and reuse them across all three steps.
+Set these once and reuse them across all three steps:
+```bash
+REPO=/path/to/your/checkout
+VCPKG=/path/to/vcpkg
+EO_3RDPARTY=/path/to/3rdparty-cache
+STAGE=/path/to/staging-root
+```
 
 1. **Build `desktop-sdk`** (the native `ascdocumentscore.framework`,
    `ooxmlsignature.framework`, the 3 `editors_helper*.app` bundles, `x2t`, and
    every converter — all one CMake project):
    ```bash
-   cmake -S desktop-sdk/ChromiumBasedEditors/lib -B build-mac-sdk \
+   cmake -S "${REPO}/desktop-sdk/ChromiumBasedEditors/lib" -B build-mac-sdk \
      -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_DESKTOP=1 \
      -DCMAKE_TOOLCHAIN_FILE="${VCPKG}/scripts/buildsystems/vcpkg.cmake" \
      -DVCPKG_TARGET_TRIPLET=arm64-osx \
      -DVCPKG_MANIFEST_MODE=ON \
-     -DVCPKG_MANIFEST_DIR="$(pwd)/core" \
+     -DVCPKG_MANIFEST_DIR="${REPO}/core" \
      -DEO_CORE_3RD_PARTY_DIR="${EO_3RDPARTY}" \
      -DEO_CORE_OUTPUT_DIR="${STAGE}/converter"
 
