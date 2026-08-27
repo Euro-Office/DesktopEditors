@@ -114,3 +114,4 @@ locally:
 
 - Building on **[Linux](./linux/README.md)**
 - Building on **[Windows](./windows/README.md)**
+- Building on **[macOS](./macos/README.md)** (staging automated, native build + Xcode still manual)
