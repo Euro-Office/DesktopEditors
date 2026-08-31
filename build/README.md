@@ -1,14 +1,15 @@
 # Building Euro-Office DesktopEditors
 
 This directory holds everything needed to build **Euro-Office DesktopEditors**
-(a fork of ONLYOFFICE DesktopEditors) from source, on Linux and Windows.
+(a fork of ONLYOFFICE DesktopEditors) from source, on Linux, Windows and macOS.
 
 If you just want to build, go straight to your platform:
 
 - **[Linux](./linux/README.md)** — a Docker-based build (`docker buildx bake`)
 - **[Windows](./windows/README.md)** — a PowerShell-driven MSVC build (`build.ps1`)
+- **[macOS](./macos/README.md)** — a Bash-driven Xcode build (`build.sh`)
 
-The rest of this page explains the model both platforms share. Read it once and
+The rest of this page explains the model the platforms share. Read it once and
 the platform guides will make a lot more sense.
 
 ## Prerequisites (all platforms)
@@ -28,26 +29,34 @@ Every command in these guides assumes you are running from the **repository
 root** (the directory that contains this `build/` folder), not from inside
 `build/` itself.
 
-## The big picture: three jobs, two platforms, one definition
+## Overview
 
-A full release is produced by three jobs in the **"Build (Windows/Linux)"** CI
-workflow:
+A full release is produced by four jobs in the **"Build (Windows/macOS/Linux)"**
+CI workflow:
 
 | Job             | Runs on          | Produces                                                                       |
 | --------------- | ---------------- | ------------------------------------------------------------------------------ |
 | `build-common`  | Linux / Docker   | the JS + WASM **editors web payload** ("common"), published as `common-files`  |
 | `build-linux`   | Linux / Docker   | the desktop app + Linux packages                                               |
 | `build-windows` | Windows / MSVC   | the desktop app + ZIP and Inno installer (optionally an MSI)                   |
+| `build-macos`   | macOS / Xcode    | the Cocoa app bundle (optionally a `.dmg`)                                      |
 
 The single most important thing to understand:
 
-> **Both `build-linux` and `build-windows` consume the output of `build-common`.**
+> **All three desktop jobs consume the output of `build-common`.**
 
 `build-common` compiles the web editors (HTML/JS) and the core WASM once, on
-Linux, because that part is platform-independent. The two desktop builds then
+Linux, because that part is platform-independent. The desktop builds then
 overlay that payload onto the native application they compile. So when you build
 the desktop app, you don't rebuild the editors — you **supply** them. How you
 supply them differs per platform and is covered in each guide.
+
+### One shared definition, except on macOS
+
+Windows and Linux build the **same Qt application** from the same CMake project.
+macOS instead builds a native Cocoa app in `desktop-apps/macos`,
+built by Xcode, with its own CMake entry point at `build/macos/CMakeLists.txt`
+for the native libraries beneath it.
 
 ## Build *definition* vs. build *orchestration*
 

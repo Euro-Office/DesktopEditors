@@ -1,2 +1,6 @@
 .docker-cache/
 build_output.log
+
+# macOS build outputs: third-party install tree, vcpkg, CMake/Xcode build dirs,
+# the staged payload and the finished .app / .dmg.
+build/deploy/
