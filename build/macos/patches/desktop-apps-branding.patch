@@ -1,0 +1,83 @@
+Brand the macOS app as Euro-Office.
+
+Applied at build time by build/macos/build.sh and reverted on exit, so the
+desktop-apps submodule keeps only the structural EO_STAGE_DIR rewiring in
+its tree. Delete this file once the branding lands upstream in
+Euro-Office/desktop-apps#16.
+
+diff --git a/macos/ONLYOFFICE.xcodeproj/project.pbxproj b/macos/ONLYOFFICE.xcodeproj/project.pbxproj
+index 2c9249c63..53d115077 100644
+--- a/macos/ONLYOFFICE.xcodeproj/project.pbxproj
++++ b/macos/ONLYOFFICE.xcodeproj/project.pbxproj
+@@ -3156,9 +3156,9 @@
+ 					"$(inherited)",
+ 					"-headerpad_max_install_names",
+ 				);
+-				PRODUCT_BUNDLE_IDENTIFIER = asc.onlyoffice.ONLYOFFICE;
++				PRODUCT_BUNDLE_IDENTIFIER = "org.euro-office.desktopeditors";
+ 				EO_STAGE_DIR = "$(PROJECT_DIR)/../../build/deploy/macos/$(CURRENT_ARCH)/stage";
+-				PRODUCT_NAME = ONLYOFFICE;
++				PRODUCT_NAME = "Euro-Office";
+ 				PROVISIONING_PROFILE = "";
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 			};
+@@ -3203,9 +3203,9 @@
+ 					"$(inherited)",
+ 					"-headerpad_max_install_names",
+ 				);
+-				PRODUCT_BUNDLE_IDENTIFIER = asc.onlyoffice.ONLYOFFICE;
++				PRODUCT_BUNDLE_IDENTIFIER = "org.euro-office.desktopeditors";
+ 				EO_STAGE_DIR = "$(PROJECT_DIR)/../../build/deploy/macos/$(CURRENT_ARCH)/stage";
+-				PRODUCT_NAME = ONLYOFFICE;
++				PRODUCT_NAME = "Euro-Office";
+ 				PROVISIONING_PROFILE = "";
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 			};
+@@ -3250,9 +3250,9 @@
+ 					"$(inherited)",
+ 					"-headerpad_max_install_names",
+ 				);
+-				PRODUCT_BUNDLE_IDENTIFIER = asc.onlyoffice.ONLYOFFICE;
++				PRODUCT_BUNDLE_IDENTIFIER = "org.euro-office.desktopeditors";
+ 				EO_STAGE_DIR = "$(PROJECT_DIR)/../../build/deploy/macos/$(CURRENT_ARCH)/stage";
+-				PRODUCT_NAME = ONLYOFFICE;
++				PRODUCT_NAME = "Euro-Office";
+ 				PROVISIONING_PROFILE = "";
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 			};
+@@ -3297,9 +3297,9 @@
+ 					"$(inherited)",
+ 					"-headerpad_max_install_names",
+ 				);
+-				PRODUCT_BUNDLE_IDENTIFIER = asc.onlyoffice.ONLYOFFICE;
++				PRODUCT_BUNDLE_IDENTIFIER = "org.euro-office.desktopeditors";
+ 				EO_STAGE_DIR = "$(PROJECT_DIR)/../../build/deploy/macos/$(CURRENT_ARCH)/stage";
+-				PRODUCT_NAME = ONLYOFFICE;
++				PRODUCT_NAME = "Euro-Office";
+ 				PROVISIONING_PROFILE = "";
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 			};
+@@ -3424,9 +3424,9 @@
+ 					"$(inherited)",
+ 					"-headerpad_max_install_names",
+ 				);
+-				PRODUCT_BUNDLE_IDENTIFIER = asc.onlyoffice.ONLYOFFICE;
++				PRODUCT_BUNDLE_IDENTIFIER = "org.euro-office.desktopeditors";
+ 				EO_STAGE_DIR = "$(PROJECT_DIR)/../../build/deploy/macos/$(CURRENT_ARCH)/stage";
+-				PRODUCT_NAME = ONLYOFFICE;
++				PRODUCT_NAME = "Euro-Office";
+ 				PROVISIONING_PROFILE = "";
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 			};
+@@ -3471,9 +3471,9 @@
+ 					"$(inherited)",
+ 					"-headerpad_max_install_names",
+ 				);
+-				PRODUCT_BUNDLE_IDENTIFIER = asc.onlyoffice.ONLYOFFICE;
++				PRODUCT_BUNDLE_IDENTIFIER = "org.euro-office.desktopeditors";
+ 				EO_STAGE_DIR = "$(PROJECT_DIR)/../../build/deploy/macos/$(CURRENT_ARCH)/stage";
+-				PRODUCT_NAME = ONLYOFFICE;
++				PRODUCT_NAME = "Euro-Office";
+ 				PROVISIONING_PROFILE = "";
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+ 			};

@@ -49,8 +49,9 @@ Desktop Editors contain the following components:
 
 ## Build it yourself 🛠️
 
-You can build Desktop Editors from source on **Windows** and **Linux**. This is a
-super-repository, so the first step is always to check out the submodules:
+You can build Desktop Editors from source on **Windows**, **macOS** and
+**Linux**. This is a super-repository, so the first step is always to check out
+the submodules:
 
 ```sh
 git clone https://github.com/Euro-Office/DesktopEditors.git
@@ -63,6 +64,7 @@ Then head to the build docs:
 * **[build/](./build/README.md)** — start here for the overall build model (the
   shared CMake definition, the common editors payload, vcpkg, and caching).
 * **[build/windows/](./build/windows/README.md)** — the Windows build (`build.ps1`, MSVC + CMake).
+* **[build/macos/](./build/macos/README.md)** — the macOS build (`build.sh`, Xcode + CMake).
 * **[build/linux/](./build/linux/README.md)** — the Linux build (Docker / `docker buildx bake`).
 
 ## Get involved 🤝
