@@ -312,16 +312,22 @@ try {
 
         Push-Location (Join-Path $RepoRoot 'build')
         try {
-            docker buildx bake -f ../docker-bake.hcl desktop-common `
+            docker buildx bake -f docker-bake.hcl desktop-common `
                 --set "desktop-common.tags=desktop-common:local" `
                 --set "desktop-common.output=type=docker" `
-                --set "*.context=../.."
+                --set "*.context=.."
             Assert-LastExit "docker bake"
         } finally { Pop-Location }
 
-        if (Test-Path $CommonDir) { Remove-Item -Recurse -Force $CommonDir }
-        docker create --name eo_common_tmp desktop-common:local true | Out-Null
-        docker cp eo_common_tmp:/ $CommonDir
+	if (Test-Path $CommonDir) { Remove-Item $CommonDir -Recurse -Force }
+	New-Item -ItemType Directory -Force -Path $CommonDir | Out-Null
+
+	docker create --name eo_common_tmp desktop-common:local true | Out-Null
+	$paths = '/index.html','/editors','/converter','/providers','/dictionaries','/fonts'
+	foreach ($p in $paths) {
+    		docker cp "eo_common_tmp:$p" $CommonDir
+    		Assert-LastExit "docker cp $p"
+	}
         docker rm eo_common_tmp | Out-Null
     }
 
