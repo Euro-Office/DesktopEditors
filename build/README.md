@@ -1,15 +1,16 @@
 # Building Euro-Office DesktopEditors
 
 This directory holds everything needed to build **Euro-Office DesktopEditors**
-(a fork of ONLYOFFICE DesktopEditors) from source, on Linux and Windows.
+(a fork of ONLYOFFICE DesktopEditors) from source, on Linux, Windows, and macOS.
 
 If you just want to build, go straight to your platform:
 
 - **[Linux](./linux/README.md)** — a Docker-based build (`docker buildx bake`)
 - **[Windows](./windows/README.md)** — a PowerShell-driven MSVC build (`build.ps1`)
+- **[macOS](./macos/README.md)** — a native CMake + Xcode build
 
-The rest of this page explains the model both platforms share. Read it once and
-the platform guides will make a lot more sense.
+The rest of this page explains the model all three platforms share. Read it
+once and the platform guides will make a lot more sense.
 
 ## Prerequisites (all platforms)
 
@@ -114,3 +115,4 @@ locally:
 
 - Building on **[Linux](./linux/README.md)**
 - Building on **[Windows](./windows/README.md)**
+- Building on **[macOS](./macos/README.md)** (staging automated, native build + Xcode still manual)
