@@ -1,4 +1,4 @@
-name: Build (Windows/Linux)
+name: Build (Windows/Linux/macOS)
 
 on:
   pull_request:
@@ -483,3 +483,129 @@ jobs:
           path: |
             build/linux/deploy/packages/*.deb
             build/linux/deploy/packages/*.rpm
+
+
+  # ─────────────────────────────────────────────────────────────
+  # BUILD (macOS)
+  #
+  # Apple Silicon only (no Intel/universal). Manual trigger only for
+  # now (see the `if:` below) - GitHub-hosted macOS runners cost
+  # roughly 10x a Linux runner per minute, and a cold-cache run here
+  # is genuinely slow (Boost/OpenSSL/ICU/V8 built from scratch, CEF
+  # downloaded). Revisit once the 3rd-party/ccache caches below are
+  # confirmed to actually hit on a second run.
+  #
+  # Mirrors build-windows's shape: the workflow stays thin, real
+  # orchestration lives in build/macos/stage.sh (see build/macos/README.md
+  # for the full three-step picture this job is just automating).
+  # ─────────────────────────────────────────────────────────────
+  build-macos:
+    if: github.event_name == 'workflow_dispatch'
+    # NOTE: confirm this is still GitHub's current Apple Silicon runner
+    # label before relying on it - these change over time.
+    runs-on: macos-14
+    needs: build-common
+    env:
+      REPO: ${{ github.workspace }}
+      EO_3RDPARTY: /Users/runner/eo-3rdparty
+      STAGE: ${{ github.workspace }}/macos-stage
+      SDK_BUILD_DIR: ${{ github.workspace }}/build-mac-sdk
+      CCACHE_DIR: /Users/runner/.ccache
+
+    steps:
+      - name: Checkout fork repository (with submodules)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: .
+          submodules: recursive
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Checkout nextcloud-office-brand repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: Euro-Office/nextcloud-office-brand
+          path: build/brands/nextcloud-office-brand
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: common-files
+          path: .                            # lands as ./common.tar
+
+      - name: Extract common payload
+        run: |
+          mkdir -p build/deploy/common
+          tar -xf common.tar -C build/deploy/common
+
+      # Local machine prerequisites, per build/macos/README.md - GitHub's
+      # macOS runners ship Homebrew and some of these already, but installing
+      # explicitly keeps this job self-describing rather than relying on
+      # whatever a given runner image happens to preinstall.
+      - name: Install Homebrew build prerequisites
+        run: brew install ninja autoconf automake libtool pkg-config ccache
+
+      - name: Set up vcpkg
+        uses: lukka/run-vcpkg@v11   # same action build-windows uses; exports VCPKG_ROOT
+
+      # By far the most important cache in this job: this is what fetches and
+      # builds Boost/OpenSSL/ICU/V8 and downloads CEF - the slowest part of a
+      # cold build. Keyed on the 3rd-party build scripts themselves, not on
+      # every commit, so it survives unrelated changes to the rest of the repo.
+      - name: Restore 3rd-party dependency cache
+        uses: actions/cache@v4
+        id: thirdparty-cache
+        with:
+          path: ${{ env.EO_3RDPARTY }}
+          key: ${{ runner.os }}-eo-3rdparty-${{ hashFiles('core/Common/3dParty/**/nc-build.py') }}
+          restore-keys: |
+            ${{ runner.os }}-eo-3rdparty-
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-macos-ccache-${{ hashFiles('core/**/CMakeLists.txt', 'desktop-sdk/**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-macos-ccache-
+
+      # ---- build + stage + package (single source of truth: build/macos/README.md's three steps) ---- #
+      - name: Build desktop-sdk
+        run: |
+          cmake -S "${REPO}/desktop-sdk/ChromiumBasedEditors/lib" -B "${SDK_BUILD_DIR}" \
+            -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_DESKTOP=1 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-osx \
+            -DVCPKG_MANIFEST_MODE=ON \
+            -DVCPKG_MANIFEST_DIR="${REPO}/core" \
+            -DEO_CORE_3RD_PARTY_DIR="${EO_3RDPARTY}" \
+            -DEO_CORE_OUTPUT_DIR="${STAGE}/converter"
+          cmake --build "${SDK_BUILD_DIR}"
+
+      - name: Stage the build
+        run: |
+          ./build/macos/stage.sh \
+            --stage-dir "${STAGE}" \
+            --3rdparty-dir "${EO_3RDPARTY}"
+
+      - name: Build the Xcode project
+        run: |
+          xcodebuild -project desktop-apps/macos/Euro-Office.xcodeproj \
+            -scheme Euro-Office-arm -configuration Release \
+            EO_MAC_STAGE_DIR="${STAGE}" \
+            CONFIGURATION_BUILD_DIR="${REPO}/build/macos/out" \
+            build
+          # No signing setup needed here - the Euro-Office-arm target's own
+          # CODE_SIGN_IDENTITY[sdk=macosx*] = "-" override already gives
+          # ad-hoc signing, same as local dev builds. Real Developer ID
+          # signing/notarization is a separate, later concern.
+
+      - name: Zip the app for upload
+        run: |
+          cd build/macos/out
+          ditto -c -k --sequesterRsrc --keepParent "Euro-Office.app" "Euro-Office-macos-arm64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-packages-arm64
+          path: build/macos/out/Euro-Office-macos-arm64.zip
