@@ -488,19 +488,17 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   # BUILD (macOS)
   #
-  # Apple Silicon only (no Intel/universal). Manual trigger only for
-  # now (see the `if:` below) - GitHub-hosted macOS runners cost
-  # roughly 10x a Linux runner per minute, and a cold-cache run here
-  # is genuinely slow (Boost/OpenSSL/ICU/V8 built from scratch, CEF
-  # downloaded). Revisit once the 3rd-party/ccache caches below are
-  # confirmed to actually hit on a second run.
+  # Apple Silicon only (no Intel/universal). Runs on the same triggers
+  # as build-windows/build-linux (pull_request + workflow_dispatch, see
+  # the top-level `on:` above) - proven green via manual dispatch first,
+  # with the 3rd-party/ccache caches below confirmed to actually hit on
+  # a second run, before being trusted on every PR.
   #
   # Mirrors build-windows's shape: the workflow stays thin, real
   # orchestration lives in build/macos/stage.sh (see build/macos/README.md
   # for the full three-step picture this job is just automating).
   # ─────────────────────────────────────────────────────────────
   build-macos:
-    if: github.event_name == 'workflow_dispatch'
     # NOTE: confirm this is still GitHub's current Apple Silicon runner
     # label before relying on it - these change over time.
     runs-on: macos-14
