@@ -693,7 +693,11 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   # BUILD (macOS)
   #
-  # Apple Silicon only (no Intel/universal).
+  # Apple Silicon only (no Intel/universal). Runs on the same triggers
+  # as build-windows/build-linux (pull_request + workflow_dispatch, see
+  # the top-level `on:` above) - proven green via manual dispatch first,
+  # with the 3rd-party/ccache caches below confirmed to actually hit on
+  # a second run, before being trusted on every PR.
   #
   # NOTE: unlike Linux and Windows, the macOS path has no branding
   # parameter at all today - the Xcode project name, scheme and app
