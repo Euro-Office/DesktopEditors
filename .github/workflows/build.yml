@@ -54,8 +54,116 @@ jobs:
   # Produces the brand-specific editors web payload consumed by all
   # three platform jobs. One run per brand.
   # ─────────────────────────────────────────────────────────────
+
+
+  # ─────────────────────────────────────────────────────────────
+  # BRAND ASSETS
+  #
+  # Renders the brand SVGs into the icon/image tree once, on Linux, and
+  # publishes it as an artifact. Each platform job untars it over its
+  # checkout before building. Windows and macOS build natively
+  # (build.ps1 / xcodebuild), not through Docker, so `COPY --from=brand-icons`
+  # isn't available there — the artifact overlay is what lets one render
+  # serve all three platforms.
+  # ─────────────────────────────────────────────────────────────
+  brand-assets:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write          # registry build cache only
+    strategy:
+      fail-fast: false
+      matrix:
+        brand:
+          - name: euro-office
+            extra_bake_files: ""
+            cache_prefix: ""
+            expect_assets: false          # dummy target: empty overlay by design
+          - name: nextcloud-office
+            extra_bake_files: "./brands/nextcloud-office-brand/brand-desktop.hcl"
+            cache_prefix: "nextcloud-office-"
+            expect_assets: true
+    steps:
+      - name: Checkout DesktopEditors repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: .
+          # The render container's context is the brand repo, not the monorepo,
+          # so the multi-GB submodules are pure cost here.
+          submodules: false
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Checkout nextcloud-office-brand repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: Euro-Office/nextcloud-office-brand
+          path: build/brands/nextcloud-office-brand
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute safe ref name
+        id: meta
+        run: echo "ref_name=$(echo '${{ github.ref_name }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Render brand assets
+        uses: docker/bake-action@4a9a8d494466d37134e2bfca2d3a8de8fb2681ad # v5.13.0
+        with:
+          workdir: ./build
+          files: |
+            ./docker-bake.hcl
+            ${{ matrix.brand.extra_bake_files }}
+          targets: brand-icons
+          push: false
+          set: |
+            *.context=..
+            brand-icons.tags=
+            brand-icons.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}brand-icons-buildcache
+            brand-icons.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}brand-icons-buildcache,mode=max
+            brand-icons.output=type=local,dest=./brand-assets
+
+      - name: Pack the overlay tree
+        run: |
+          set -euo pipefail
+          OUT=build/brand-assets          # dest above is relative to workdir ./build
+          mkdir -p "$OUT"
+
+          # The euro-office dummy (FROM scratch + WORKDIR /keep) exports an empty
+          # /keep; drop it so the overlay is a genuine no-op.
+          rm -rf "$OUT/keep"
+
+          echo "--- rendered overlay ---"
+          find "$OUT" -type f -printf '%P\t%s bytes\n' | sort | tee /tmp/manifest.txt
+
+          # Without this, a brand repo that renames its Dockerfile or drops an SVG
+          # produces an empty overlay and every downstream job ships unbranded,
+          # green. Fail loudly instead.
+          if [ "${{ matrix.brand.expect_assets }}" = "true" ] && [ ! -s /tmp/manifest.txt ]; then
+            echo "::error::brand-icons produced no files for ${{ matrix.brand.name }}"
+            exit 1
+          fi
+
+          tar -czf brand-assets.tar.gz -C "$OUT" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: brand-assets-${{ matrix.brand.name }}
+          path: brand-assets.tar.gz
+          if-no-files-found: error
+          compression-level: 0          # already gzipped
+          retention-days: 7
+
   build-common:
     runs-on: 'ubuntu-latest'
+    needs: brand-assets
     permissions:
       contents: write
       packages: write
@@ -79,8 +187,8 @@ jobs:
             branding_dir: "./build/brands/nextcloud-office-brand"
             # Relative to workdir ./build. Leave empty until the brand repo
             # ships a desktop bake file.
-            extra_bake_files_common: "./brands/nextcloud-office-brand/brand-server.hcl"
-            extra_targets_common: "brand-icons,"
+            extra_bake_files_common: ""
+            extra_targets_common: ""
             cache_prefix: "nextcloud-office-"
     steps:
       - name: Checkout fork repository (with submodules)
@@ -161,6 +269,15 @@ jobs:
             echo "product_version=${{ env.PRODUCT_VERSION }}" >> $GITHUB_OUTPUT
             echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
           fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: brand-assets-${{ matrix.brand.name }}
+          path: brand-assets
+
+      - name: Overlay brand assets onto the checkout
+        shell: bash                    # Git Bash on the Windows runners
+        run: tar -xzf brand-assets/brand-assets.tar.gz -C .
 
       - name: Build desktop-common
         uses: docker/bake-action@4a9a8d494466d37134e2bfca2d3a8de8fb2681ad # v5.13.0
@@ -280,7 +397,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   build-windows:
     runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
-    needs: [build-common, crosscompile-3rdparty-arm64]
+    needs: [build-common, crosscompile-3rdparty-arm64, brand-assets]
     strategy:
       fail-fast: false
       matrix:
@@ -354,6 +471,15 @@ jobs:
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11 # exports VCPKG_ROOT for the script
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: brand-assets-${{ matrix.brand.name }}
+          path: brand-assets
+
+      - name: Overlay brand assets onto the checkout
+        shell: bash                    # Git Bash on the Windows runners
+        run: tar -xzf brand-assets/brand-assets.tar.gz -C .
+
       # ---- build + package (single source of truth: the script) ---- #
       - name: Build & package
         shell: pwsh
@@ -386,7 +512,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   build-linux:
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    needs: build-common
+    needs: [build-common, brand-assets]
     permissions:
       contents: write
       packages: write
@@ -412,8 +538,8 @@ jobs:
             branding_dir: "./build/brands/nextcloud-office-brand"
             # Relative to workdir ./build/linux, i.e. one level deeper than
             # build-common: "../brands/nextcloud-office-brand/<file>.hcl"
-            extra_bake_files_linux: "../brands/nextcloud-office-brand/brand-server.hcl"
-            extra_targets_linux: "brand-icons,"
+            extra_bake_files_linux: ""
+            extra_targets_linux: ""
             cache_prefix: "nextcloud-office-"
     steps:
       - name: Checkout fork repository (with submodules)
@@ -501,6 +627,17 @@ jobs:
             echo "product_version=${{ env.PRODUCT_VERSION }}" >> $GITHUB_OUTPUT
             echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
           fi
+
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: brand-assets-${{ matrix.brand.name }}
+          path: brand-assets
+
+      - name: Overlay brand assets onto the checkout
+        shell: bash                    # Git Bash on the Windows runners
+        run: tar -xzf brand-assets/brand-assets.tar.gz -C .
+
 
       - name: Build packages
         uses: docker/bake-action@4a9a8d494466d37134e2bfca2d3a8de8fb2681ad # v5.13.0
