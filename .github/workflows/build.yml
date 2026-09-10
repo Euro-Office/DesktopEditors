@@ -411,8 +411,8 @@ jobs:
             branding_dir: "./build/brands/nextcloud-office-brand"
             # Relative to workdir ./build/linux, i.e. one level deeper than
             # build-common: "../brands/nextcloud-office-brand/<file>.hcl"
-            extra_bake_files_common: "./brands/nextcloud-office-brand/brand-server.hcl"
-            extra_targets_common: "brand-icons,"
+            extra_bake_files_linux: "../brands/nextcloud-office-brand/brand-server.hcl"
+            extra_targets_linux: "brand-icons,"
             cache_prefix: "nextcloud-office-"
     steps:
       - name: Checkout fork repository (with submodules)
