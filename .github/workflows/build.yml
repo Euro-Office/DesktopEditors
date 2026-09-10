@@ -889,7 +889,7 @@ jobs:
   publish-repo:
     needs: build-linux
     if: startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-stable.')
-    uses: Euro-Office/DocumentServer/.github/workflows/publish-repo.yml@pkgrepo ##TODO: change to main
+    uses: Euro-Office/DocumentServer/.github/workflows/publish-repo.yml@feat/pkgrepo ##TODO: change to main
     with:
       product: desktopeditors
       artifact_pattern: 'linux-packages-nextcloud-office-*'
