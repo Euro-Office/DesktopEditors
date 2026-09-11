@@ -114,6 +114,12 @@ $VersionFull = "$ProductVersion.0"            # make.ps1 wants a 4-part System.V
 $InstallDir  = Join-Path $RepoRoot 'desktopeditors'
 $PackageDir  = Join-Path $RepoRoot 'desktop-apps\package'
 
+# Mirror the Dockerfile's ENV block. Process-scoped, so cmake/ninja and the
+# packaging scripts all inherit them.
+$env:PRODUCT_VERSION      = $ProductVersion
+$env:BUILD_NUMBER         = $BuildNumber
+$env:ABOUT_PAGE_APP_NAME  = "$CompanyName $ProductName"
+
 # ───────────────────────────── helpers ──────────────────────────────────────
 # When this runs inside GitHub Actions, emit ::group::/::endgroup:: so each
 # phase is a collapsible, individually-timed section in the Actions log -
@@ -426,7 +432,7 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
         "-DCMAKE_TOOLCHAIN_FILE=$($env:VCPKG_ROOT)\scripts\buildsystems\vcpkg.cmake",
         '-DVCPKG_MANIFEST_MODE=ON',
         '-DVCPKG_MANIFEST_DIR=core',
-        '-DABOUT_PAGE_APP_NAME=Desktop Editors'
+        '-DABOUT_PAGE_APP_NAME=$env:ABOUT_PAGE_APP_NAME'
     )
     # sccache caches MSVC object files by content hash and (with
     # SCCACHE_GHA_ENABLED=true) persists them in the GitHub Actions cache, so a
