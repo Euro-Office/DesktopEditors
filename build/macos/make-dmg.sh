@@ -52,18 +52,28 @@ fi
 APP_PATH_ABS="$(cd "${APP_PATH}" && pwd)"
 
 echo "==> Generating appdmg config"
-# Written inside RESOURCES_DIR (not system tmp) because appdmg resolves
-# "background" relative to the config file's own directory, not cwd.
-CONFIG_JSON="$(mktemp "${RESOURCES_DIR}/appdmg-XXXXXX.json")"
+# appdmg requires the config file to literally have a .json extension, but
+# macOS's mktemp only randomizes trailing X's - a template ending in X's
+# followed by ".json" never gets substituted at all (confirmed: it always
+# creates the same fixed filename, colliding on a second call). Get a real
+# unique name from mktemp first, then rename it to add the required suffix.
+CONFIG_JSON_TMP="$(mktemp -t appdmg)"
+CONFIG_JSON="${CONFIG_JSON_TMP}.json"
+mv "${CONFIG_JSON_TMP}" "${CONFIG_JSON}"
 trap 'rm -f "${CONFIG_JSON}"' EXIT
-jq --arg app_path "${APP_PATH_ABS}" '.contents[0].path = $app_path' \
+# Rewrite both the app path and the background path to absolute values, so
+# the config file no longer needs to live next to background.png for
+# appdmg's relative-path resolution to work (it can now live anywhere, e.g.
+# system tmp, instead of RESOURCES_DIR).
+jq --arg app_path "${APP_PATH_ABS}" --arg background "${RESOURCES_DIR}/background.png" \
+    '.contents[0].path = $app_path | .background = $background' \
     "${RESOURCES_DIR}/appdmg.json" > "${CONFIG_JSON}"
 
 echo "==> Building DMG"
 mkdir -p "$(dirname "${OUTPUT_PATH}")"
 OUTPUT_PATH_ABS="$(cd "$(dirname "${OUTPUT_PATH}")" && pwd)/$(basename "${OUTPUT_PATH}")"
 rm -f "${OUTPUT_PATH_ABS}"
-( cd "${RESOURCES_DIR}" && npx --yes appdmg "${CONFIG_JSON}" "${OUTPUT_PATH_ABS}" )
+npx --yes appdmg "${CONFIG_JSON}" "${OUTPUT_PATH_ABS}"
 
 echo ""
 echo "DMG created: ${OUTPUT_PATH_ABS}"
