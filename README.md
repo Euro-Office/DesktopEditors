@@ -49,7 +49,7 @@ Desktop Editors contain the following components:
 
 ## Build it yourself 🛠️
 
-You can build Desktop Editors from source on **Windows** and **Linux**. This is a
+You can build Desktop Editors from source on **Windows**, **Linux**, and **macOS**. This is a
 super-repository, so the first step is always to check out the submodules:
 
 ```sh
@@ -64,6 +64,7 @@ Then head to the build docs:
   shared CMake definition, the common editors payload, vcpkg, and caching).
 * **[build/windows/](./build/windows/README.md)** — the Windows build (`build.ps1`, MSVC + CMake).
 * **[build/linux/](./build/linux/README.md)** — the Linux build (Docker / `docker buildx bake`).
+* **[build/macos/](./build/macos/README.md)** — the macOS build (native CMake + Xcode).
 
 ## Get involved 🤝
 
