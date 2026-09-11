@@ -35,7 +35,7 @@ Set these once and reuse them across all three steps:
 REPO=/path/to/your/checkout
 VCPKG=/path/to/vcpkg
 EO_3RDPARTY=/path/to/3rdparty-cache
-STAGE=/path/to/staging-root
+STAGE=/path/to/staging-root  # arbitrary, doesn't need to exist yet - step 1 creates it
 ```
 
 1. **Build `desktop-sdk`** (the native `ascdocumentscore.framework`,
@@ -60,7 +60,7 @@ STAGE=/path/to/staging-root
    `${STAGE}/converter/x2t` should all exist.
 2. **Stage it** — this is what `stage.sh` automates:
    ```bash
-   ./build/macos/stage.sh \
+   "${REPO}/build/macos/stage.sh" \
      --stage-dir "${STAGE}" \
      --3rdparty-dir "${EO_3RDPARTY}"
    ```
@@ -69,7 +69,7 @@ STAGE=/path/to/staging-root
    vars if yours live elsewhere.)
 3. **Build the Xcode project**, pointed at the staged tree:
    ```bash
-   xcodebuild -project desktop-apps/macos/Euro-Office.xcodeproj \
+   xcodebuild -project "${REPO}/desktop-apps/macos/Euro-Office.xcodeproj" \
      -scheme Euro-Office-arm -configuration Release \
      EO_MAC_STAGE_DIR="${STAGE}" \
      CONFIGURATION_BUILD_DIR="${REPO}/build/macos/out" \
@@ -78,6 +78,17 @@ STAGE=/path/to/staging-root
    `Euro-Office.app` lands directly at `${REPO}/build/macos/out/Euro-Office.app` —
    without `CONFIGURATION_BUILD_DIR`, Xcode uses its default DerivedData
    location instead (`~/Library/Developer/Xcode/DerivedData/Euro-Office-<hash>/Build/Products/<configuration>/`).
+4. **(Optional) Package a DMG installer** — `make-dmg.sh` packages the built
+   `.app` into a distributable `.dmg` (app + `/Applications` symlink,
+   background graphic), using [`appdmg`](https://github.com/LinusU/node-appdmg)
+   and the config/assets in `desktop-apps/macos/fastlane/resources/`. Needs
+   Node/npm on `PATH` (not required for steps 1-3) — CI's macOS runners have
+   it by default.
+   ```bash
+   "${REPO}/build/macos/make-dmg.sh" \
+     --app "${REPO}/build/macos/out/Euro-Office.app" \
+     --output "${REPO}/build/macos/out/Euro-Office-macos-arm64.dmg"
+   ```
 
 ## What `stage.sh` does
 

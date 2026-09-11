@@ -598,12 +598,13 @@ jobs:
           # ad-hoc signing, same as local dev builds. Real Developer ID
           # signing/notarization is a separate, later concern.
 
-      - name: Zip the app for upload
+      - name: Build the DMG installer
         run: |
-          cd build/macos/out
-          ditto -c -k --sequesterRsrc --keepParent "Euro-Office.app" "Euro-Office-macos-arm64.zip"
+          ./build/macos/make-dmg.sh \
+            --app build/macos/out/Euro-Office.app \
+            --output build/macos/out/Euro-Office-macos-arm64.dmg
 
       - uses: actions/upload-artifact@v4
         with:
           name: macos-packages-arm64
-          path: build/macos/out/Euro-Office-macos-arm64.zip
+          path: build/macos/out/Euro-Office-macos-arm64.dmg
