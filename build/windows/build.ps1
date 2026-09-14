@@ -432,7 +432,7 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
         "-DCMAKE_TOOLCHAIN_FILE=$($env:VCPKG_ROOT)\scripts\buildsystems\vcpkg.cmake",
         '-DVCPKG_MANIFEST_MODE=ON',
         '-DVCPKG_MANIFEST_DIR=core',
-        '-DABOUT_PAGE_APP_NAME=$env:ABOUT_PAGE_APP_NAME'
+        "-DABOUT_PAGE_APP_NAME=$env:ABOUT_PAGE_APP_NAME"
     )
     # sccache caches MSVC object files by content hash and (with
     # SCCACHE_GHA_ENABLED=true) persists them in the GitHub Actions cache, so a
