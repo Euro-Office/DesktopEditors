@@ -1,9 +1,20 @@
-name: Build (Windows/Linux)
+name: Build (Windows/Linux/macOS)
 
 on:
+  push:
+    branches:
+      - main
+    tags:
+      - '**'
+  # PRs are expected from same-repo branches only. A fork PR gets a read-only
+  # GITHUB_TOKEN and no secrets, so EURO_OFFICE_MIRROR_TOKEN (required to fetch
+  # the private submodules + the brand repo) is empty and the build hard-fails.
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io/euro-office
@@ -12,24 +23,147 @@ env:
   BUILD_NUMBER: dev.1
   BUILD_ROOT: /package
 
+# ─────────────────────────────────────────────────────────────
+# BRANDING
+#
+# Same mechanism as DocumentServer: the brand repo is checked out
+# into build/brands/nextcloud-office-brand (inside the docker build
+# context, which is the repo root for every bake target here), and
+# the bake graph is told about it through three variables that the
+# existing docker-bake.hcl files already declare:
+#
+#   BRANDING_DIR   path (relative to the repo root) whose
+#                  desktop-apps/package/ tree is overlaid on top of
+#                  the upstream packaging tree in
+#                  build/.docker/packages.bake.Dockerfile
+#   COMPANY_NAME   drives COMPANY_NAME_LOW, the package/output names
+#   PRODUCT_NAME   display name baked into the packages
+#
+# Because those are HCL `variable` blocks, setting them as env vars on
+# the bake step is enough — no brand .hcl file is strictly required.
+# The extra_bake_files_* / extra_targets_* matrix slots are kept so a
+# brand-desktop.hcl from the brand repo can be layered on later
+# exactly the way brand-server.hcl is in DocumentServer (e.g. to
+# override a `brand-icons` target).
+# ─────────────────────────────────────────────────────────────
+
 jobs:
+  # ─────────────────────────────────────────────────────────────
+  # BUILD (common / Linux / Docker / WASM)
+  #
+  # Produces the brand-specific editors web payload consumed by all
+  # three platform jobs. One run per brand.
+  # ─────────────────────────────────────────────────────────────
+
 
   # ─────────────────────────────────────────────────────────────
-  # BUILD
+  # BRAND ASSETS
   #
-  # Single job that builds the full target graph in one bake
-  # invocation per arch × brand. Because develop depends on
-  # docker which depends on packages, bake resolves the shared
-  # graph and never rebuilds a layer twice.
-  #
-  # Pushing per target:
-  #   docker   → pushed on default branch (:nightly) and git tags (:latest)
-  #   develop  → pushed on default branch only (:latest-dev)
-  #   packages → never pushed; exported to local filesystem for release upload
-  #              (euro-office → GitHub Release, nextcloud-office → SSH)
+  # Renders the brand SVGs into the icon/image tree once, on Linux, and
+  # publishes it as an artifact. Each platform job untars it over its
+  # checkout before building. Windows and macOS build natively
+  # (build.ps1 / xcodebuild), not through Docker, so `COPY --from=brand-icons`
+  # isn't available there — the artifact overlay is what lets one render
+  # serve all three platforms.
   # ─────────────────────────────────────────────────────────────
+  brand-assets:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write          # registry build cache only
+    strategy:
+      fail-fast: false
+      matrix:
+        brand:
+          - name: euro-office
+            extra_bake_files: ""
+            cache_prefix: ""
+            expect_assets: false          # dummy target: empty overlay by design
+          - name: nextcloud-office
+            extra_bake_files: "./brands/nextcloud-office-brand/brand-desktop.hcl"
+            cache_prefix: "nextcloud-office-"
+            expect_assets: true
+    steps:
+      - name: Checkout DesktopEditors repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: .
+          # The render container's context is the brand repo, not the monorepo,
+          # so the multi-GB submodules are pure cost here.
+          submodules: false
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Checkout nextcloud-office-brand repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: Euro-Office/nextcloud-office-brand
+          path: build/brands/nextcloud-office-brand
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute safe ref name
+        id: meta
+        run: echo "ref_name=$(echo '${{ github.ref_name }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Render brand assets
+        uses: docker/bake-action@4a9a8d494466d37134e2bfca2d3a8de8fb2681ad # v5.13.0
+        with:
+          workdir: ./build
+          files: |
+            ./docker-bake.hcl
+            ${{ matrix.brand.extra_bake_files }}
+          targets: brand-icons
+          push: false
+          set: |
+            *.context=..
+            brand-icons.tags=
+            brand-icons.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}brand-icons-buildcache
+            brand-icons.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}brand-icons-buildcache,mode=max
+            brand-icons.output=type=local,dest=./brand-assets
+
+      - name: Pack the overlay tree
+        run: |
+          set -euo pipefail
+          OUT=build/brand-assets          # dest above is relative to workdir ./build
+          mkdir -p "$OUT"
+
+          # The euro-office dummy (FROM scratch + WORKDIR /keep) exports an empty
+          # /keep; drop it so the overlay is a genuine no-op.
+          rm -rf "$OUT/keep"
+
+          echo "--- rendered overlay ---"
+          find "$OUT" -type f -printf '%P\t%s bytes\n' | sort | tee /tmp/manifest.txt
+
+          # Without this, a brand repo that renames its Dockerfile or drops an SVG
+          # produces an empty overlay and every downstream job ships unbranded,
+          # green. Fail loudly instead.
+          if [ "${{ matrix.brand.expect_assets }}" = "true" ] && [ ! -s /tmp/manifest.txt ]; then
+            echo "::error::brand-icons produced no files for ${{ matrix.brand.name }}"
+            exit 1
+          fi
+
+          tar -czf brand-assets.tar.gz -C "$OUT" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: brand-assets-${{ matrix.brand.name }}
+          path: brand-assets.tar.gz
+          if-no-files-found: error
+          compression-level: 0          # already gzipped
+          retention-days: 7
+
   build-common:
     runs-on: 'ubuntu-latest'
+    needs: brand-assets
     permissions:
       contents: write
       packages: write
@@ -39,15 +173,23 @@ jobs:
         brand:
           - name: euro-office
             image_name: desktop-common
-            extra_bake_files: ""
-            extra_targets: ""
+            company_name: Euro-Office
+            product_name: DesktopEditors
+            branding_dir: "."
+            extra_bake_files_common: ""
+            extra_targets_common: ""
             cache_prefix: ""
-          #- name: nextcloud-office
-          #  image_name: no-desktop-common
-          #  extra_bake_files: "./brands/nextcloud-office-brand/brand-server.hcl"
-          #  extra_targets: "brand-icons,"
-          #  cache_prefix: "nextcloud-office-"
-
+          - name: nextcloud-office
+            image_name: no-desktop-common
+            company_name: Nextcloud
+            product_name: Nextcloud Office
+            # Relative to the bake context (`..` from workdir ./build) = repo root.
+            branding_dir: "./build/brands/nextcloud-office-brand"
+            # Relative to workdir ./build. Leave empty until the brand repo
+            # ships a desktop bake file.
+            extra_bake_files_common: ""
+            extra_targets_common: ""
+            cache_prefix: "nextcloud-office-"
     steps:
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -66,8 +208,10 @@ jobs:
       - name: Debug workspace
         run: |
           echo "workspace: ${{ github.workspace }}"
+          echo "brand:     ${{ matrix.brand.name }}"
           ls -la "${{ github.workspace }}"
           ls -la "${{ github.workspace }}/build" || echo "build/ MISSING"
+          ls -la "${{ github.workspace }}/build/brands/nextcloud-office-brand" || echo "brand/ MISSING"
 
       - name: Set up Docker Buildx
         id: buildx
@@ -79,8 +223,10 @@ jobs:
           path: |
             wasm-ccache
             wasm-em-cache
-          key: ${{ runner.os }}-wasm-${{ hashFiles('core/**/CMakeLists.txt') }}
+          # Brand-scoped so the two brands don't evict each other's cache.
+          key: ${{ runner.os }}-wasm-${{ matrix.brand.name }}-${{ hashFiles('core/**/CMakeLists.txt') }}
           restore-keys: |
+            ${{ runner.os }}-wasm-${{ matrix.brand.name }}-
             ${{ runner.os }}-wasm-
 
       - uses: reproducible-containers/buildkit-cache-dance@v3.4.0
@@ -88,7 +234,7 @@ jobs:
           builder: ${{ steps.buildx.outputs.name }}
           cache-map: |
             {
-              "wasm-ccache":   { "target": "/ccache",   "id": "wasm-ccache" },
+              "wasm-ccache": { "target": "/ccache", "id": "wasm-ccache" },
               "wasm-em-cache": { "target": "/em-cache", "id": "wasm-em-cache" }
             }
           skip-extraction: ${{ steps.wasm-cache.outputs.cache-hit }}
@@ -105,34 +251,50 @@ jobs:
         run: |
           REF_NAME=$(echo '${{ github.ref_name }}' | tr '/' '-')
           echo "ref_name=${REF_NAME}" >> $GITHUB_OUTPUT
-
           echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+          # NOTE: IS_TAG was referenced but never assigned in the original
+          # workflow, so the tag branch below could never be taken.
+          IS_TAG=${{ startsWith(github.ref, 'refs/tags/') }}
 
           # Parse PRODUCT_VERSION / BUILD_NUMBER from tag of the form v${PRODUCT_VERSION}-${BUILD_NUMBER}
           # (e.g. v9.3.1-beta.1, v9.3.1-stable.1). Fall back to env defaults otherwise.
           if [[ "$IS_TAG" == "true" && "${{ github.ref_name }}" =~ ^v([^-]+)-(.+)$ ]]; then
             echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "build_number=${BASH_REMATCH[2]}"    >> $GITHUB_OUTPUT
+            echo "build_number=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
+          elif [[ "$IS_TAG" == "true" && "${{ github.ref_name }}" =~ ^v(.+)$ ]]; then
+            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+            echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
           else
             echo "product_version=${{ env.PRODUCT_VERSION }}" >> $GITHUB_OUTPUT
-            echo "build_number=${{ env.BUILD_NUMBER }}"       >> $GITHUB_OUTPUT
+            echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build all targets (packages → docker → develop)
+      - uses: actions/download-artifact@v4
+        with:
+          name: brand-assets-${{ matrix.brand.name }}
+          path: brand-assets
+
+      - name: Overlay brand assets onto the checkout
+        shell: bash                    # Git Bash on the Windows runners
+        run: tar -xzf brand-assets/brand-assets.tar.gz -C .
+
+      - name: Build desktop-common
         uses: docker/bake-action@4a9a8d494466d37134e2bfca2d3a8de8fb2681ad # v5.13.0
         with:
           workdir: ./build
-          # For nextcloud-office, brand-server.hcl is appended; empty lines are
-          # filtered by bake-action so euro-office sees only the base file.
+          # A brand bake file is appended when the brand defines one; empty
+          # lines are filtered by bake-action so euro-office sees only the base.
           files: |
             ./docker-bake.hcl
-          # extra_targets is either "" (euro-office) or "brand-icons," so the
-          # comma-joined target list resolves correctly for both.
-          targets: desktop-common
+            ${{ matrix.brand.extra_bake_files_common }}
+          # extra_targets_common is either "" or "<target>," so the comma-joined
+          # target list resolves correctly for both brands.
+          targets: ${{ matrix.brand.extra_targets_common }}desktop-common
           # push=false here; per-target pushing is controlled via tags below.
-          # Targets with empty tags= are not pushed regardless of this flag.
           push: false
           set: |
+            *.context=..
             core-wasm.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-wasm-buildcache
             core-wasm.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-wasm-buildcache,mode=max
             core-wasm.tags=
@@ -147,7 +309,7 @@ jobs:
             web-apps.tags=
             desktop-common.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache
             desktop-common.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache,mode=max
-            desktop-common.tags=${{format('{0}/{1}:{2}', env.REGISTRY, matrix.brand.image_name, steps.meta.outputs.sha_short)}}
+            desktop-common.tags=${{ format('{0}/{1}:{2}', env.REGISTRY, matrix.brand.image_name, steps.meta.outputs.sha_short) }}
             desktop-common.output=type=tar,dest=./common.tar
         env:
           REGISTRY: ${{ env.REGISTRY }}
@@ -155,24 +317,33 @@ jobs:
           BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
           BUILD_ROOT: ${{ env.BUILD_ROOT }}
           NUGET_CACHE: local
+          # ---- branding ----
+          BRANDING_DIR: ${{ matrix.brand.branding_dir }}
+          COMPANY_NAME: ${{ matrix.brand.company_name }}
+          PRODUCT_NAME: ${{ matrix.brand.product_name }}
+          # ------------------
           NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
           NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: common-files
-          path: ./build/common.tar          # was ./build/common
+          name: common-files-${{ matrix.brand.name }}
+          path: ./build/common.tar
           compression-level: 0
 
-
+  # ─────────────────────────────────────────────────────────────
+  # 3RD-PARTY CROSS-COMPILE (brand independent)
+  #
+  # V8/OpenSSL for Windows arm64 contain no branding, so this job
+  # deliberately stays outside the brand matrix and is shared.
+  # ─────────────────────────────────────────────────────────────
   crosscompile-3rdparty-arm64:
-    runs-on: windows-2022                 # x64 host that cross-compiles to arm64
+    runs-on: windows-2022 # x64 host that cross-compiles to arm64
     env:
       PYTHONUTF8: "1"
-      DEPOT_TOOLS_WIN_TOOLCHAIN: "0"      # V8: use the locally installed VS, not Google's toolchain
-      NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}   # required: ensure_dep uploads here
+      DEPOT_TOOLS_WIN_TOOLCHAIN: "0" # V8: use the locally installed VS, not Google's toolchain
+      NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }} # required: ensure_dep uploads here
       NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
- 
     steps:
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -180,14 +351,14 @@ jobs:
           path: .
           submodules: recursive
           token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
- 
+
       # windows-2022 ships VS2022 but not always the ARM64 *target* tools.
       # clang-cl (V8) links arm64 against the arm64 Windows SDK libs;
       # cl.exe (OpenSSL) needs the amd64_arm64 toolset. Add both.
       - name: Add ARM64 build tools to Visual Studio
         shell: pwsh
         run: |
-          $vsWhere     = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
           $installPath = & $vsWhere -latest -products * -property installationPath
           & $vsInstaller modify `
@@ -200,7 +371,6 @@ jobs:
             Write-Warning "vs_installer returned $LASTEXITCODE - components may already be present, continuing."
           }
 
-          
       # Sets the amd64_arm64 cross environment for all later steps, incl.
       # VSCMD_ARG_TGT_ARCH=arm64 -- the single signal openssl, v8 and the
       # cache tag all key off of.
@@ -209,11 +379,6 @@ jobs:
         with:
           arch: amd64_arm64
 
-
-      # ASSUMPTION: build_3rdparty.py can be told to *target* arm64 while
-      # running on an x64 host. If it only builds host-arch today, that's the
-      # gap to close first (see notes in chat: V8 -> target_cpu="arm64";
-      # OpenSSL -> Configure VC-WIN64-ARM under the amd64_arm64 MSVC env).
       - name: Cross-compile arm64 third-party (V8, OpenSSL)
         shell: pwsh
         run: |
@@ -222,22 +387,35 @@ jobs:
             "${{ github.workspace }}\workdir" `
             "${{ github.workspace }}\installdir"
 
-
+  # ─────────────────────────────────────────────────────────────
+  # BUILD (Windows)
+  #
+  # arch × brand. build.ps1 takes -CompanyName / -ProductName; it has
+  # no branding-dir overlay yet, so installer artwork still comes from
+  # the upstream desktop-apps/win-linux/package tree. See the note at
+  # the bottom of the accompanying summary.
+  # ─────────────────────────────────────────────────────────────
   build-windows:
     runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
-    needs: [build-common, crosscompile-3rdparty-arm64]
+    needs: [build-common, crosscompile-3rdparty-arm64, brand-assets]
     strategy:
       fail-fast: false
       matrix:
         arch:
           - amd64
           - arm64
+        brand:
+          - name: euro-office
+            company_name: Euro-Office
+            product_name: DesktopEditors
+          - name: nextcloud-office
+            company_name: Nextcloud
+            product_name: Nextcloud Office
     env:
       PYTHONUTF8: "1"
       NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
       NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
       SCCACHE_GHA_ENABLED: "true"
-
     steps:
       # ---- orchestration / environment setup (stays in the workflow) ---- #
       - name: Checkout fork repository (with submodules)
@@ -256,8 +434,8 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: common-files
-          path: .                            # lands as .\common.tar
+          name: common-files-${{ matrix.brand.name }}
+          path: . # lands as .\common.tar
 
       - name: Extract common
         shell: pwsh
@@ -266,8 +444,6 @@ jobs:
           tar -xf .\common.tar -C .\common   # bsdtar ships with windows-2022/arm runners
 
       # Install Cygwin WITHOUT touching PATH (the script does the PATH ordering).
-      # add-to-path:false stops the action from prepending C:\cygwin\bin and
-      # shadowing the native perl/python/git/cmake.
       - name: Install Cygwin
         uses: cygwin/cygwin-install-action@v4
         with:
@@ -285,62 +461,58 @@ jobs:
         shell: pwsh
         run: python -m pip install --upgrade --break-system-packages aqtinstall
 
-#      - name: Install Windows SDK, v141 toolset and ATL
-#        shell: pwsh
-#        run: |
-#          $vsWhere     = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-#          $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-#          $installPath = & $vsWhere -latest -products * -property installationPath
-#          & $vsInstaller modify `
-#            --installPath $installPath `
-#            --add Microsoft.VisualStudio.Component.Windows10SDK.19041 `
-#            --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 `
-#            --add Microsoft.VisualStudio.Component.VC.v141.ATL `
-#            --add Microsoft.VisualStudio.Component.VC.v141.MFC `
-#            --quiet --norestart --force
-#          if ($LASTEXITCODE -notin @(0, 3010)) {
-#            Write-Warning "vs_installer returned $LASTEXITCODE — components may already be installed, continuing."
-#          }
-
-
       - name: Set up sccache
-        uses: mozilla-actions/sccache-action@v0.0.10   # puts sccache on PATH + exports the cache tokens
+        uses: mozilla-actions/sccache-action@v0.0.10 # puts sccache on PATH + exports the cache tokens
 
       - name: Install Ninja
         shell: pwsh
-        run: choco install ninja -y --no-progress      # usually already on windows-2022; harmless if so
+        run: choco install ninja -y --no-progress
 
       - name: Set up vcpkg
-        uses: lukka/run-vcpkg@v11   # exports VCPKG_ROOT for the script
+        uses: lukka/run-vcpkg@v11 # exports VCPKG_ROOT for the script
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: brand-assets-${{ matrix.brand.name }}
+          path: brand-assets
+
+      - name: Overlay brand assets onto the checkout
+        shell: bash                    # Git Bash on the Windows runners
+        run: tar -xzf brand-assets/brand-assets.tar.gz -C .
 
       # ---- build + package (single source of truth: the script) ---- #
-      # Covers: copy login assets, deterministic PATH (native > Cygwin > rest),
-      # tool verification, vcvars + CMake configure/build/install, robocopy
-      # overlay of common, and make.ps1 / make_zip.ps1 / make_inno.ps1.
       - name: Build & package
         shell: pwsh
         run: |
           .\build\windows\build.ps1 `
-            -CommonDir      "${{ github.workspace }}\common" `
+            -CommonDir "${{ github.workspace }}\common" `
             -ProductVersion "${{ env.PRODUCT_VERSION }}" `
-            -Arch           ${{ matrix.arch == 'arm64' && 'arm64' || 'x64' }}  `
-            -Target         standalone `
-            -CompanyName    Euro-Office `
-            -ProductName    DesktopEditors
+            -Arch ${{ matrix.arch == 'arm64' && 'arm64' || 'x64' }} `
+            -Target standalone `
+            -CompanyName "${{ matrix.brand.company_name }}" `
+            -ProductName "${{ matrix.brand.product_name }}"
 
       # ---- collect outputs (stays in the workflow) ---- #
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-packages-${{ matrix.arch }}
+          name: windows-packages-${{ matrix.brand.name }}-${{ matrix.arch }}
           path: |
             desktop-apps/package/zip/*.zip
             desktop-apps/package/inno/*.exe
             desktop-apps/package/advinst/*.msi
 
-
+  # ─────────────────────────────────────────────────────────────
+  # BUILD (Linux)
+  #
+  # arch × brand. This is where the branding overlay actually bites:
+  # packages.bake.Dockerfile does
+  #   COPY ${BRANDING_DIR}/desktop-apps/package/ /desktop-editors-package/
+  # on top of the upstream packaging tree, and COMPANY_NAME_LOW decides
+  # the .deb/.rpm names.
+  # ─────────────────────────────────────────────────────────────
   build-linux:
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    needs: build-common
+    needs: [build-common, brand-assets]
     permissions:
       contents: write
       packages: write
@@ -352,14 +524,23 @@ jobs:
           - arm64
         brand:
           - name: euro-office
-            extra_bake_files: ""
-            extra_targets: ""
+            company_name: Euro-Office
+            product_name: DesktopEditors
+            branding_dir: "."
+            extra_bake_files_linux: ""
+            extra_targets_linux: ""
             cache_prefix: ""
-          #- name: nextcloud-office
-          #  extra_bake_files: "./brands/nextcloud-office-brand/brand-server.hcl"
-          #  extra_targets: "brand-icons,"
-          #  cache_prefix: "nextcloud-office-"
-
+          - name: nextcloud-office
+            company_name: Nextcloud
+            product_name: Nextcloud Office
+            # Bake context for ./build/linux targets is `../..` = repo root,
+            # so this is the same string as in build-common.
+            branding_dir: "./build/brands/nextcloud-office-brand"
+            # Relative to workdir ./build/linux, i.e. one level deeper than
+            # build-common: "../brands/nextcloud-office-brand/<file>.hcl"
+            extra_bake_files_linux: ""
+            extra_targets_linux: ""
+            cache_prefix: "nextcloud-office-"
     steps:
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -377,7 +558,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: common-files
+          name: common-files-${{ matrix.brand.name }}
           path: ./build/linux
 
       - name: Extract common
@@ -388,8 +569,10 @@ jobs:
       - name: Debug workspace
         run: |
           echo "workspace: ${{ github.workspace }}"
+          echo "brand:     ${{ matrix.brand.name }}"
           ls -la "${{ github.workspace }}"
           ls -la "${{ github.workspace }}/build" || echo "build/ MISSING"
+          ls -la "${{ github.workspace }}/build/brands/nextcloud-office-brand" || echo "brand/ MISSING"
 
       - name: Set up Docker Buildx
         id: buildx
@@ -402,8 +585,9 @@ jobs:
           path: |
             ccache
             nuget-cache
-          key: ${{ runner.os }}-desktop-${{ hashFiles('core/vcpkg.json', 'desktop-apps/win-linux/CMakeLists.txt') }}
+          key: ${{ runner.os }}-desktop-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ hashFiles('core/vcpkg.json', 'desktop-apps/win-linux/CMakeLists.txt') }}
           restore-keys: |
+            ${{ runner.os }}-desktop-${{ matrix.brand.name }}-${{ matrix.arch }}-
             ${{ runner.os }}-desktop-
 
       - name: Inject caches into BuildKit
@@ -429,34 +613,43 @@ jobs:
         run: |
           REF_NAME=$(echo '${{ github.ref_name }}' | tr '/' '-')
           echo "ref_name=${REF_NAME}" >> $GITHUB_OUTPUT
-
           echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-          # Parse PRODUCT_VERSION / BUILD_NUMBER from tag of the form v${PRODUCT_VERSION}-${BUILD_NUMBER}
-          # (e.g. v9.3.1-beta.1, v9.3.1-stable.1). Fall back to env defaults otherwise.
+          IS_TAG=${{ startsWith(github.ref, 'refs/tags/') }}
+
           if [[ "$IS_TAG" == "true" && "${{ github.ref_name }}" =~ ^v([^-]+)-(.+)$ ]]; then
             echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "build_number=${BASH_REMATCH[2]}"    >> $GITHUB_OUTPUT
+            echo "build_number=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
+          elif [[ "$IS_TAG" == "true" && "${{ github.ref_name }}" =~ ^v(.+)$ ]]; then
+            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+            echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
           else
             echo "product_version=${{ env.PRODUCT_VERSION }}" >> $GITHUB_OUTPUT
-            echo "build_number=${{ env.BUILD_NUMBER }}"       >> $GITHUB_OUTPUT
+            echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build all targets (packages → docker → develop)
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: brand-assets-${{ matrix.brand.name }}
+          path: brand-assets
+
+      - name: Overlay brand assets onto the checkout
+        shell: bash                    # Git Bash on the Windows runners
+        run: tar -xzf brand-assets/brand-assets.tar.gz -C .
+
+
+      - name: Build packages
         uses: docker/bake-action@4a9a8d494466d37134e2bfca2d3a8de8fb2681ad # v5.13.0
         with:
           workdir: ./build/linux
-          # For nextcloud-office, brand-server.hcl is appended; empty lines are
-          # filtered by bake-action so euro-office sees only the base file.
           files: |
             ./docker-bake.hcl
-          # extra_targets is either "" (euro-office) or "brand-icons," so the
-          # comma-joined target list resolves correctly for both.
-          targets: packages
-          # push=false here; per-target pushing is controlled via tags below.
-          # Targets with empty tags= are not pushed regardless of this flag.
+            ${{ matrix.brand.extra_bake_files_linux }}
+          targets: ${{ matrix.brand.extra_targets_linux }}packages
           push: false
           set: |
+            *.context=../..
             core-base.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache
             core-base.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ steps.meta.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache,mode=max
             core-base.tags=
@@ -474,12 +667,230 @@ jobs:
           BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
           BUILD_ROOT: ${{ env.BUILD_ROOT }}
           NUGET_CACHE: local
+          # ---- branding ----
+          BRANDING_DIR: ${{ matrix.brand.branding_dir }}
+          COMPANY_NAME: ${{ matrix.brand.company_name }}
+          PRODUCT_NAME: ${{ matrix.brand.product_name }}
+          # ------------------
           NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
           NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-packages-${{ matrix.arch }}
+          name: linux-packages-${{ matrix.brand.name }}-${{ matrix.arch }}
           path: |
             build/linux/deploy/packages/*.deb
             build/linux/deploy/packages/*.rpm
+            build/linux/deploy/packages/*.tar.xz
+
+  # ─────────────────────────────────────────────────────────────
+  # BUILD (macOS)
+  #
+  # Apple Silicon only (no Intel/universal).
+  #
+  # NOTE: unlike Linux and Windows, the macOS path has no branding
+  # parameter at all today - the Xcode project name, scheme and app
+  # bundle are hardcoded to Euro-Office. The matrix below is shaped so
+  # a nextcloud-office row can simply be uncommented once the brand
+  # repo (or desktop-apps/macos) provides a branded project/scheme.
+  # ─────────────────────────────────────────────────────────────
+  build-macos:
+    # NOTE: confirm this is still GitHub's current Apple Silicon runner
+    # label before relying on it - these change over time.
+    runs-on: macos-14
+    needs: build-common
+    strategy:
+      fail-fast: false
+      matrix:
+        brand:
+          - name: euro-office
+            xcode_project: desktop-apps/macos/Euro-Office.xcodeproj
+            xcode_scheme: Euro-Office-arm
+            app_bundle: Euro-Office.app
+            zip_name: Euro-Office-macos-arm64.zip
+          #- name: nextcloud-office
+          #  xcode_project: desktop-apps/macos/Nextcloud-Office.xcodeproj
+          #  xcode_scheme: Nextcloud-Office-arm
+          #  app_bundle: Nextcloud Office.app
+          #  zip_name: Nextcloud-Office-macos-arm64.zip
+    env:
+      REPO: ${{ github.workspace }}
+      EO_3RDPARTY: /Users/runner/eo-3rdparty
+      STAGE: ${{ github.workspace }}/macos-stage
+      SDK_BUILD_DIR: ${{ github.workspace }}/build-mac-sdk
+      CCACHE_DIR: /Users/runner/.ccache
+    steps:
+      - name: Checkout fork repository (with submodules)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: .
+          submodules: recursive
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - name: Checkout nextcloud-office-brand repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: Euro-Office/nextcloud-office-brand
+          path: build/brands/nextcloud-office-brand
+          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: common-files-${{ matrix.brand.name }}
+          path: . # lands as ./common.tar
+
+      - name: Extract common payload
+        run: |
+          mkdir -p build/deploy/common
+          tar -xf common.tar -C build/deploy/common
+
+      - name: Install Homebrew build prerequisites
+        run: brew install ninja autoconf automake libtool pkg-config ccache
+
+      - name: Set up vcpkg
+        uses: lukka/run-vcpkg@v11 # same action build-windows uses; exports VCPKG_ROOT
+
+      # Brand-independent (3rd-party deps carry no branding), so the cache key
+      # deliberately does NOT include the brand.
+      - name: Restore 3rd-party dependency cache
+        uses: actions/cache@v4
+        id: thirdparty-cache
+        with:
+          path: ${{ env.EO_3RDPARTY }}
+          key: ${{ runner.os }}-eo-3rdparty-${{ hashFiles('core/Common/3dParty/**/nc-build.py') }}
+          restore-keys: |
+            ${{ runner.os }}-eo-3rdparty-
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-macos-ccache-${{ matrix.brand.name }}-${{ hashFiles('core/**/CMakeLists.txt', 'desktop-sdk/**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-macos-ccache-${{ matrix.brand.name }}-
+            ${{ runner.os }}-macos-ccache-
+
+      # ---- build + stage + package ---- #
+      - name: Build desktop-sdk
+        run: |
+          cmake -S "${REPO}/desktop-sdk/ChromiumBasedEditors/lib" -B "${SDK_BUILD_DIR}" \
+            -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_DESKTOP=1 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-osx \
+            -DVCPKG_MANIFEST_MODE=ON \
+            -DVCPKG_MANIFEST_DIR="${REPO}/core" \
+            -DEO_CORE_3RD_PARTY_DIR="${EO_3RDPARTY}" \
+            -DEO_CORE_OUTPUT_DIR="${STAGE}/converter"
+          cmake --build "${SDK_BUILD_DIR}"
+
+      - name: Stage the build
+        run: |
+          ./build/macos/stage.sh \
+            --stage-dir "${STAGE}" \
+            --3rdparty-dir "${EO_3RDPARTY}"
+
+      - name: Build the Xcode project
+        run: |
+          xcodebuild -project "${{ matrix.brand.xcode_project }}" \
+            -scheme "${{ matrix.brand.xcode_scheme }}" -configuration Release \
+            EO_MAC_STAGE_DIR="${STAGE}" \
+            CONFIGURATION_BUILD_DIR="${REPO}/build/macos/out" \
+            build
+
+      - name: Zip the app for upload
+        run: |
+          cd build/macos/out
+          ditto -c -k --sequesterRsrc --keepParent "${{ matrix.brand.app_bundle }}" "${{ matrix.brand.zip_name }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-packages-${{ matrix.brand.name }}-arm64
+          path: build/macos/out/${{ matrix.brand.zip_name }}
+
+  # ─────────────────────────────────────────────────────────────
+  # PUBLISH - euro-office to GitHub Release
+  # ─────────────────────────────────────────────────────────────
+  publish-release:
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows, build-macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-packages-euro-office-*'
+          path: dist
+          merge-multiple: true
+ 
+      - run: find dist -type f -printf '%p  %s bytes\n' | sort
+ 
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: dist/**/*
+ 
+  # ─────────────────────────────────────────────────────────────
+  # PUBLISH - nextcloud-office to the versioned directory on the server
+  #
+  # Lands under office/desktopeditors/<version>/<build>/, mirroring
+  # office/docserver/<version>/. Independent of the APT/DNF archive so
+  # beta/dev builds stay downloadable.
+  # ─────────────────────────────────────────────────────────────
+  publish-files:
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Parse version from tag
+        id: meta
+        run: |
+          if [[ "${{ github.ref_name }}" =~ ^v([^-]+)-(.+)$ ]]; then
+            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+            echo "build_number=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
+          else
+            echo "product_version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
+          fi
+ 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-packages-nextcloud-office-*'
+          path: dist
+          merge-multiple: true
+ 
+      - name: Upload via SSH
+        env:
+          SSH_KEY: ${{ secrets.NEXTCLOUD_SSH_KEY }}
+          SSH_HOST: ${{ secrets.NEXTCLOUD_SSH_HOST }}
+          SSH_USER: ${{ secrets.NEXTCLOUD_SSH_USER }}
+          SSH_PORT: ${{ secrets.NEXTCLOUD_SSH_PORT || 22 }}
+          REMOTE_BASE: ${{ secrets.NEXTCLOUD_SSH_REMOTE_PATH }}
+          PRODUCT_VERSION: ${{ steps.meta.outputs.product_version }}
+          BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+ 
+          TARGET="$REMOTE_BASE/desktopeditors/$PRODUCT_VERSION/$BUILD_NUMBER"
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$TARGET'"
+          scp -i ~/.ssh/id_deploy -P "$SSH_PORT" -r dist/. \
+            "$SSH_USER@$SSH_HOST:$TARGET/"
+ 
+  # ─────────────────────────────────────────────────────────────
+  # PUBLISH - nextcloud-office to the shared APT/DNF archive
+  #
+  # Stable tags only (v9.3.4-stable.1). The logic lives once in the
+  # DocumentServer repo and is called from here.
+  # ─────────────────────────────────────────────────────────────
+  publish-repo:
+    needs: build-linux
+    #if: startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-stable.')
+    uses: Euro-Office/DocumentServer/.github/workflows/publish-repo.yml@feat/pkgrepo ##TODO: change to main
+    with:
+      product: desktopeditors
+      artifact_pattern: 'linux-packages-nextcloud-office-*'
+    secrets: inherit

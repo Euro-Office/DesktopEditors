@@ -91,6 +91,14 @@ target "_common" {
 # DEPENDENCY TARGETS
 # ──────────────────────────────────────────────
 
+target "brand-icons" {
+  ## dummy image that contains no brand,
+  ## so default brand is applied implicitly.
+  ## needs workdir as scratch is otherwise 
+  ## non-existent
+  dockerfile-inline = "FROM scratch\nWORKDIR /keep"
+}
+
 target "core-wasm" {
   inherits   = ["_common"]
   context    = ".."
@@ -147,6 +155,7 @@ target "desktop-common" {
     desktop-js      = "target:desktop-js"       #   even in stages before desktop-common
     sdkjs-desktop   = "target:sdkjs-desktop"
     web-apps        = "target:web-apps"
+    brand-icons   = "target:brand-icons"
   }
 
   # Export the filesystem directly to a local directory instead of an image
