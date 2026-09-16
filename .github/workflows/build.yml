@@ -181,8 +181,8 @@ jobs:
             cache_prefix: ""
           - name: nextcloud-office
             image_name: no-desktop-common
-            company_name: Nextcloud
-            product_name: Nextcloud Office
+            company_name: Nextcloud Office
+            product_name: Desktop Editors
             # Relative to the bake context (`..` from workdir ./build) = repo root.
             branding_dir: "./build/brands/nextcloud-office-brand"
             # Relative to workdir ./build. Leave empty until the brand repo
@@ -409,8 +409,8 @@ jobs:
             company_name: Euro-Office
             product_name: DesktopEditors
           - name: nextcloud-office
-            company_name: Nextcloud
-            product_name: Nextcloud Office
+            company_name: Nextcloud Office
+            product_name: Desktop Editors
     env:
       PYTHONUTF8: "1"
       NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
@@ -531,8 +531,8 @@ jobs:
             extra_targets_linux: ""
             cache_prefix: ""
           - name: nextcloud-office
-            company_name: Nextcloud
-            product_name: Nextcloud Office
+            company_name: Nextcloud Office
+            product_name: Desktop Editors
             # Bake context for ./build/linux targets is `../..` = repo root,
             # so this is the same string as in build-common.
             branding_dir: "./build/brands/nextcloud-office-brand"
@@ -711,7 +711,7 @@ jobs:
           #- name: nextcloud-office
           #  xcode_project: desktop-apps/macos/Nextcloud-Office.xcodeproj
           #  xcode_scheme: Nextcloud-Office-arm
-          #  app_bundle: Nextcloud Office.app
+          #  app_bundle: Desktop Editors.app
           #  zip_name: Nextcloud-Office-macos-arm64.zip
     env:
       REPO: ${{ github.workspace }}
