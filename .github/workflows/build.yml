@@ -718,12 +718,12 @@ jobs:
             xcode_project: desktop-apps/macos/Euro-Office.xcodeproj
             xcode_scheme: Euro-Office-arm
             app_bundle: Euro-Office.app
-            zip_name: Euro-Office-macos-arm64.zip
+            dmg_name: Euro-Office-macos-arm64.dmg
           #- name: nextcloud-office
           #  xcode_project: desktop-apps/macos/Nextcloud-Office.xcodeproj
           #  xcode_scheme: Nextcloud-Office-arm
           #  app_bundle: Desktop Editors.app
-          #  zip_name: Nextcloud-Office-macos-arm64.zip
+          #  dmg_name: Nextcloud-Office-macos-arm64.dmg
     env:
       REPO: ${{ github.workspace }}
       EO_3RDPARTY: /Users/runner/eo-3rdparty
@@ -809,15 +809,16 @@ jobs:
             CONFIGURATION_BUILD_DIR="${REPO}/build/macos/out" \
             build
 
-      - name: Zip the app for upload
+      - name: Build the DMG installer
         run: |
-          cd build/macos/out
-          ditto -c -k --sequesterRsrc --keepParent "${{ matrix.brand.app_bundle }}" "${{ matrix.brand.zip_name }}"
+          ./build/macos/make-dmg.sh \
+            --app "build/macos/out/${{ matrix.brand.app_bundle }}" \
+            --output "build/macos/out/${{ matrix.brand.dmg_name }}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: macos-packages-${{ matrix.brand.name }}-arm64
-          path: build/macos/out/${{ matrix.brand.zip_name }}
+          path: build/macos/out/${{ matrix.brand.dmg_name }}
 
   # ─────────────────────────────────────────────────────────────
   # PUBLISH - euro-office to GitHub Release
