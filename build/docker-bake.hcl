@@ -152,5 +152,5 @@ target "desktop-common" {
   # Export the filesystem directly to a local directory instead of an image
   output = ["type=oci,dest=./deploy/common,tar=false"]
 
-  cache-from = ["type=local,src=/tmp/${REGISTRY}/desktop-common"]  # reuses builder cache
+  cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/desktop-common"]  # reuses builder cache
 }
