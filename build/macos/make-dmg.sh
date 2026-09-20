@@ -11,21 +11,26 @@ RESOURCES_DIR="${REPO_ROOT}/desktop-apps/macos/fastlane/resources"
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") --app <path-to-.app> --output <path-to-.dmg>
+Usage: $(basename "$0") --app <path-to-.app> --output <path-to-.dmg> [--title <name>]
 
 Required:
   --app <path>      The built .app bundle to package (e.g. build/macos/out/Euro-Office.app).
   --output <path>   Where to write the resulting .dmg.
+
+Optional:
+  --title <name>    DMG window/volume title (default: appdmg.json's own "title").
 EOF
 }
 
 APP_PATH=""
 OUTPUT_PATH=""
+TITLE=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --app) APP_PATH="$2"; shift 2 ;;
         --output) OUTPUT_PATH="$2"; shift 2 ;;
+        --title) TITLE="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "error: unknown argument: $1" 1>&2; usage 1>&2; exit 1 ;;
     esac
@@ -66,7 +71,9 @@ trap 'rm -f "${CONFIG_JSON}"' EXIT
 # appdmg's relative-path resolution to work (it can now live anywhere, e.g.
 # system tmp, instead of RESOURCES_DIR).
 jq --arg app_path "${APP_PATH_ABS}" --arg background "${RESOURCES_DIR}/background.png" \
-    '.contents[0].path = $app_path | .background = $background' \
+   --arg title "${TITLE}" \
+    '.contents[0].path = $app_path | .background = $background
+     | if $title != "" then .title = $title else . end' \
     "${RESOURCES_DIR}/appdmg.json" > "${CONFIG_JSON}"
 
 echo "==> Building DMG"

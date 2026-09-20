@@ -699,11 +699,14 @@ jobs:
   # with the 3rd-party/ccache caches below confirmed to actually hit on
   # a second run, before being trusted on every PR.
   #
-  # NOTE: unlike Linux and Windows, the macOS path has no branding
-  # parameter at all today - the Xcode project name, scheme and app
-  # bundle are hardcoded to Euro-Office. The matrix below is shaped so
-  # a nextcloud-office row can simply be uncommented once the brand
-  # repo (or desktop-apps/macos) provides a branded project/scheme.
+  # NOTE: unlike Linux and Windows, macOS uses a single Xcode project
+  # (Euro-Office.xcodeproj) for every brand - there's no separate
+  # Nextcloud-Office project/scheme. PRODUCT_NAME/PRODUCT_BUNDLE_IDENTIFIER
+  # are overridden per-brand directly on the xcodebuild command line, and
+  # copyright/CFBundleName text + icons are patched by apply-branding.sh /
+  # regenerate-branding-assets.sh before the build (both ephemeral, not
+  # committed - same non-committed spirit as Windows/Linux's icon overlay,
+  # just done locally here instead of through the shared brand-assets job).
   # ─────────────────────────────────────────────────────────────
   build-macos:
     # NOTE: confirm this is still GitHub's current Apple Silicon runner
@@ -714,16 +717,33 @@ jobs:
       fail-fast: false
       matrix:
         brand:
+          # There is only one Xcode project - xcode_project/xcode_scheme stay
+          # the same for every brand. Only the branded, build-time-overridden
+          # settings (app_bundle/dmg_name/company_name/product_name/bundle_id)
+          # and the icon source SVGs differ per row. Empty icon SVG fields
+          # mean "use regenerate-branding-assets.sh's own committed defaults".
           - name: euro-office
             xcode_project: desktop-apps/macos/Euro-Office.xcodeproj
             xcode_scheme: Euro-Office-arm
             app_bundle: Euro-Office.app
             dmg_name: Euro-Office-macos-arm64.dmg
-          #- name: nextcloud-office
-          #  xcode_project: desktop-apps/macos/Nextcloud-Office.xcodeproj
-          #  xcode_scheme: Nextcloud-Office-arm
-          #  app_bundle: Desktop Editors.app
-          #  dmg_name: Nextcloud-Office-macos-arm64.dmg
+            company_name: Euro-Office
+            product_name: Euro-Office
+            bundle_id: asc.euro-office.Euro-Office
+            app_icon_svg: ""
+            wordmark_light_svg: ""
+            wordmark_dark_svg: ""
+          - name: nextcloud-office
+            xcode_project: desktop-apps/macos/Euro-Office.xcodeproj
+            xcode_scheme: Euro-Office-arm
+            app_bundle: Desktop Editors.app
+            dmg_name: Nextcloud-Office-macos-arm64.dmg
+            company_name: Nextcloud Office
+            product_name: Desktop Editors
+            bundle_id: asc.nextcloud-office.Nextcloud-Office
+            app_icon_svg: build/brands/nextcloud-office-brand/svg/logo-light.svg
+            wordmark_light_svg: build/brands/nextcloud-office-brand/svg/logo-large-light.svg
+            wordmark_dark_svg: build/brands/nextcloud-office-brand/svg/logo-large-dark.svg
     env:
       REPO: ${{ github.workspace }}
       EO_3RDPARTY: /Users/runner/eo-3rdparty
@@ -801,19 +821,41 @@ jobs:
             --stage-dir "${STAGE}" \
             --3rdparty-dir "${EO_3RDPARTY}"
 
+      # ---- brand the build output ---- #
+      - name: Regenerate icons for this brand
+        run: |
+          args=()
+          if [ -n "${{ matrix.brand.app_icon_svg }}" ]; then
+            args+=(
+              --app-icon-svg "${{ matrix.brand.app_icon_svg }}"
+              --wordmark-light-svg "${{ matrix.brand.wordmark_light_svg }}"
+              --wordmark-dark-svg "${{ matrix.brand.wordmark_dark_svg }}"
+            )
+          fi
+          ./desktop-apps/macos/regenerate-branding-assets.sh "${args[@]}"
+
+      - name: Apply branding (copyright/bundle name text)
+        run: |
+          ./desktop-apps/macos/apply-branding.sh \
+            --company-name "${{ matrix.brand.company_name }}" \
+            --product-name "${{ matrix.brand.product_name }}"
+
       - name: Build the Xcode project
         run: |
           xcodebuild -project "${{ matrix.brand.xcode_project }}" \
             -scheme "${{ matrix.brand.xcode_scheme }}" -configuration Release \
             EO_MAC_STAGE_DIR="${STAGE}" \
             CONFIGURATION_BUILD_DIR="${REPO}/build/macos/out" \
+            PRODUCT_NAME="${{ matrix.brand.product_name }}" \
+            PRODUCT_BUNDLE_IDENTIFIER="${{ matrix.brand.bundle_id }}" \
             build
 
       - name: Build the DMG installer
         run: |
           ./build/macos/make-dmg.sh \
             --app "build/macos/out/${{ matrix.brand.app_bundle }}" \
-            --output "build/macos/out/${{ matrix.brand.dmg_name }}"
+            --output "build/macos/out/${{ matrix.brand.dmg_name }}" \
+            --title "${{ matrix.brand.product_name }}"
 
       - uses: actions/upload-artifact@v4
         with:
