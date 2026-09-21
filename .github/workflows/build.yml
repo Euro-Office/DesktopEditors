@@ -736,10 +736,10 @@ jobs:
           - name: nextcloud-office
             xcode_project: desktop-apps/macos/Euro-Office.xcodeproj
             xcode_scheme: Euro-Office-arm
-            app_bundle: Desktop Editors.app
+            app_bundle: Nextcloud Office.app
             dmg_name: Nextcloud-Office-macos-arm64.dmg
             company_name: Nextcloud Office
-            product_name: Desktop Editors
+            product_name: Nextcloud Office
             bundle_id: asc.nextcloud-office.Nextcloud-Office
             app_icon_svg: build/brands/nextcloud-office-brand/svg/logo-light.svg
             wordmark_light_svg: build/brands/nextcloud-office-brand/svg/logo-large-light.svg
