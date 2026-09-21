@@ -1,2 +1,4 @@
 .docker-cache/
+.vscode/
 build_output.log
+build/deploy/

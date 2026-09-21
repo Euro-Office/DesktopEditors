@@ -45,7 +45,7 @@ FROM ubuntu:24.04 AS package
     COPY desktop-apps/package/ /desktop-editors-package/
 
     ### Branding
-    COPY ${BRANDING_DIR}/desktop-apps/package/ /desktop-editors-package/
+    COPY --from=brand-icons /[d]esktop-apps/package/ /desktop-editors-package/
     ###
 
     RUN cd desktop-editors-package && \
