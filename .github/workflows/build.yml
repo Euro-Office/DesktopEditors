@@ -224,7 +224,7 @@ jobs:
           - name: euro-office
             image_name: desktop-common
             company_name: Euro-Office
-            product_name: DesktopEditors
+            product_name: Euro-Office
             branding_dir: "."
             extra_bake_files_common: ""
             extra_targets_common: ""
@@ -232,7 +232,7 @@ jobs:
           - name: nextcloud-office
             image_name: no-desktop-common
             company_name: Nextcloud Office
-            product_name: Desktop Editors
+            product_name: Nextcloud Office
             # Relative to the bake context (`..` from workdir ./build) = repo root.
             branding_dir: "./build/brands/nextcloud-office-brand"
             # Relative to workdir ./build. Leave empty until the brand repo
@@ -434,10 +434,10 @@ jobs:
         brand:
           - name: euro-office
             company_name: Euro-Office
-            product_name: DesktopEditors
+            product_name: Euro-Office
           - name: nextcloud-office
             company_name: Nextcloud Office
-            product_name: Desktop Editors
+            product_name: Nextcloud Office
     env:
       PYTHONUTF8: "1"
       NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
@@ -553,14 +553,14 @@ jobs:
         brand:
           - name: euro-office
             company_name: Euro-Office
-            product_name: DesktopEditors
+            product_name: Euro-Office
             branding_dir: "."
             extra_bake_files_linux: ""
             extra_targets_linux: ""
             cache_prefix: ""
           - name: nextcloud-office
             company_name: Nextcloud Office
-            product_name: Desktop Editors
+            product_name: Nextcloud Office
             # Bake context for ./build/linux targets is `../..` = repo root,
             # so this is the same string as in build-common.
             branding_dir: "./build/brands/nextcloud-office-brand"
