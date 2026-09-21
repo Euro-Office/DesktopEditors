@@ -731,8 +731,8 @@ jobs:
             product_name: Euro-Office
             bundle_id: asc.euro-office.Euro-Office
             app_icon_svg: ""
-            wordmark_light_svg: ""
-            wordmark_dark_svg: ""
+            tab_icon_light_svg: ""
+            tab_icon_dark_svg: ""
           - name: nextcloud-office
             xcode_project: desktop-apps/macos/Euro-Office.xcodeproj
             xcode_scheme: Euro-Office-arm
@@ -742,8 +742,8 @@ jobs:
             product_name: Nextcloud Office
             bundle_id: asc.nextcloud-office.Nextcloud-Office
             app_icon_svg: build/brands/nextcloud-office-brand/svg/logo-light.svg
-            wordmark_light_svg: build/brands/nextcloud-office-brand/svg/logo-large-light.svg
-            wordmark_dark_svg: build/brands/nextcloud-office-brand/svg/logo-large-dark.svg
+            tab_icon_light_svg: build/brands/nextcloud-office-brand/svg/logo-light.svg
+            tab_icon_dark_svg: build/brands/nextcloud-office-brand/svg/logo-dark.svg
     env:
       REPO: ${{ github.workspace }}
       EO_3RDPARTY: /Users/runner/eo-3rdparty
@@ -828,8 +828,8 @@ jobs:
           if [ -n "${{ matrix.brand.app_icon_svg }}" ]; then
             args+=(
               --app-icon-svg "${{ matrix.brand.app_icon_svg }}"
-              --wordmark-light-svg "${{ matrix.brand.wordmark_light_svg }}"
-              --wordmark-dark-svg "${{ matrix.brand.wordmark_dark_svg }}"
+              --tab-icon-light-svg "${{ matrix.brand.tab_icon_light_svg }}"
+              --tab-icon-dark-svg "${{ matrix.brand.tab_icon_dark_svg }}"
             )
           fi
           ./desktop-apps/macos/regenerate-branding-assets.sh "${args[@]}"
