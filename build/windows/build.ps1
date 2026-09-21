@@ -118,7 +118,7 @@ $PackageDir  = Join-Path $RepoRoot 'desktop-apps\package'
 # packaging scripts all inherit them.
 $env:PRODUCT_VERSION      = $ProductVersion
 $env:BUILD_NUMBER         = $BuildNumber
-$env:ABOUT_PAGE_APP_NAME  = "$CompanyName $ProductName"
+$env:ABOUT_PAGE_APP_NAME  = "$ProductName"
 
 # ───────────────────────────── helpers ──────────────────────────────────────
 # When this runs inside GitHub Actions, emit ::group::/::endgroup:: so each
