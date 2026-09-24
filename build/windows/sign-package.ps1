@@ -143,7 +143,7 @@ try {
     $env:INNOPATH = Get-InnoRoot $InnoRoot
     if (-not $env:INNOPATH) { throw "Inno Setup (iscc.exe) not found. Install Inno Setup 6 or pass -InnoRoot." }
     Write-Host "INNOPATH=$env:INNOPATH"
-    if (-not (Get-Command tar.exe -ErrorAction SilentlyContinue)) { throw "tar.exe not found (ships with Windows 10+)." }
+    $tar = Get-WindowsTar
 
     if (-not $SignArgs) {
         $SignArgs = @('/fd', 'sha256')
@@ -194,7 +194,7 @@ try {
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
         Write-Step "[$n/$($bundles.Count)] Extracting $($bundle.FullName)"
-        tar.exe -xf $bundle.FullName -C $dir
+        & $tar -xf $bundle.FullName -C $dir
         Assert-LastExit "tar extract"
         $m = Get-Content -Raw (Join-Path $dir 'signing-bundle.json') | ConvertFrom-Json
         $m | Format-List | Out-String | Write-Host

@@ -500,8 +500,7 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
         [IO.File]::WriteAllText($listPath, ($entries -join "`n") + "`n")
 
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent ([IO.Path]::GetFullPath($SigningBundle))) | Out-Null
-        # bsdtar (tar.exe, part of Windows 10+).
-        tar.exe -cf $SigningBundle -C $RepoRoot -T $listPath
+        & (Get-WindowsTar) -cf $SigningBundle -C $RepoRoot -T $listPath
         Assert-LastExit "tar signing bundle"
         Remove-Item -Force $manifestPath, $listPath
         Write-Host ("Signing bundle: {0} ({1:N0} MB)" -f $SigningBundle, ((Get-Item $SigningBundle).Length / 1MB))
