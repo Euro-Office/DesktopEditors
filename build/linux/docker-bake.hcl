@@ -88,6 +88,13 @@ target "_common" {
 # DEPENDENCY TARGETS
 # ──────────────────────────────────────────────
 
+target "brand-icons" {
+  ## dummy image that contains no brand,
+  ## so default brand is applied implicitly.
+  ## needs workdir as scratch is otherwise 
+  ## non-existent
+  dockerfile-inline = "FROM scratch\nWORKDIR /keep"
+}
 
 target "core-base" {
   inherits   = ["_common"]
@@ -115,6 +122,7 @@ target "desktop-linux" {
   contexts = {
     desktop-common  = "oci-layout://../deploy/common:${TAG}"
     core-base       = "target:core-base"
+    brand-icons   = "target:brand-icons"
   }
   secret = [
     "id=nextcloud_user,env=NEXTCLOUD_USER",
@@ -135,7 +143,8 @@ target "packages" {
   target     = "packages"       # points to the FROM scratch stage
   tags       = ["${REGISTRY}/packages:${TAG}"]
   contexts = {
-    desktop-linux          = "target:desktop-linux"
+    desktop-linux = "target:desktop-linux"
+    brand-icons   = "target:brand-icons"
   }
 
   # Export the filesystem directly to a local directory instead of an image

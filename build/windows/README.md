@@ -74,6 +74,7 @@ location, so it works regardless of your current directory):
 | `-InstallDeps`    | Install Cygwin, VS components, and packaging tools (admin; one-time)   | off                    |
 | `-BuildMsi`       | Also build the MSI with Advanced Installer (needs a license)          | off                    |
 | `-SkipPackaging`  | Build and install only; skip ZIP / installer steps                    | off                    |
+| `-SigningBundle`  | Also write a tar for the signing server (see [Code signing](#code-signing)) | off           |
 | `-ProductVersion`, `-BuildNumber`, `-CompanyName`, `-ProductName` | Version / branding | see [overview](../README.md#versioning-and-branding) |
 
 ## What the script does
@@ -96,6 +97,68 @@ With packaging enabled (the default), artifacts land under
 
 Use `-SkipPackaging` to stop after the install step; the unpackaged app tree is
 then at `<RepoRoot>\desktopeditors`.
+
+## Code signing
+
+Only **Nextcloud Office** is signed. **Euro-Office** is packaged unsigned on
+CI and published to the GitHub release as-is. Which brand gets signed is set
+by `sign:` in the `build-windows` matrix.
+
+The signing certificate lives on a separate signing server. The installer must
+be built from signed binaries and is itself signed, so for these brands CI
+builds no packages at all and the server does all packaging:
+
+1. For brands with `sign: true`, CI runs `build.ps1 -SkipPackaging
+   -SigningBundle ...` and uploads `windows-signing-bundle-<brand>-<arch>`
+   instead of `windows-packages-<brand>-<arch>`. It is a tar holding the install tree
+   (`desktopeditors\`), the `desktop-apps` packaging scripts and Inno project,
+   the VC++ redistributable, and a `signing-bundle.json` manifest (version, arch,
+   target, names, commit).
+2. On the signing server, **`sign-package.ps1`** downloads those artifacts with
+   the GitHub CLI and, for each bundle, runs:
+   - `make.ps1 -Sign`: stages the tree, signs every `.exe`/`.dll`, and
+     regenerates the VLC plugin cache (it must be generated *after* signing)
+   - `make_zip.ps1`: builds the ZIP from the signed tree
+   - `make_inno.ps1 -Sign`: builds the installer; iscc signs the setup and the
+     uninstaller
+
+   It then checks every signature with `Get-AuthenticodeSignature` and copies
+   the results to `-OutDir\<Company>-<arch>\` plus `SHA256SUMS.txt`.
+
+Server requirements: Windows 10+, signtool (Windows SDK, found automatically),
+Inno Setup 6, 7-Zip, and `gh` with read access to the repo's Actions artifacts
+(`GH_TOKEN`). From this repo the server only needs `build\windows\` (a checkout
+without submodules is enough). Everything else comes from the bundle, so it
+matches the build.
+
+```powershell
+$env:GH_TOKEN = '<token with actions:read on Euro-Office/DesktopEditors>'
+
+# Nextcloud Office (default -Brand), all arches, latest run for a release tag:
+.\build\windows\sign-package.ps1 -Tag v9.3.1-stable.1 -CertThumbprint <sha1>
+
+# One arch of a specific run:
+.\build\windows\sign-package.ps1 -RunId 1234567890 -Arch amd64 -CertName "<subject>"
+
+# Bundle copied over by other means:
+.\build\windows\sign-package.ps1 -BundlePath D:\incoming\ -CertThumbprint <sha1>
+```
+
+By default the certificate is picked from the Windows certificate store
+(`-CertThumbprint` → `/sha1`, `-CertName` → `/n`, neither → `/a`), with SHA-256
+digests and an RFC 3161 timestamp (`-TimestampServer`). For any other setup,
+such as a dlib-based signer like Azure Trusted Signing, pass the full signtool
+argument list with `-SignArgs`. It goes to both `make.ps1` and `make_inno.ps1`.
+
+Keep `-WorkDir` short (default `%SystemDrive%\eo-sign`). The editors tree is
+deeply nested and would otherwise run into the 260-character path limit.
+Staging the Inno language files writes to the Inno install directory, so run
+the script elevated, or run it once elevated to stage those files.
+
+**VLC plugin cache:** if the build ships `vlc-cache-gen.exe`, `make.ps1`
+regenerates the cache after signing and then removes the tool. It can only do
+that on a host with the same architecture, so on an x64 server arm64 builds
+keep the tool and have no cache (upstream behaves the same way).
 
 ## Good to know
 
