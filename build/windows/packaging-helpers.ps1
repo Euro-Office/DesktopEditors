@@ -36,6 +36,15 @@ function Assert-LastExit([string]$What) {
     if ($LASTEXITCODE -ne 0) { throw "$What failed (exit $LASTEXITCODE)." }
 }
 
+# Windows' own bsdtar. Always by full path: on the build PATH, Cygwin's GNU tar
+# comes first (and Git's can shadow it elsewhere), and GNU tar parses "D:\..."
+# as a remote host:path archive ("Cannot connect to D: resolve failed").
+function Get-WindowsTar {
+    $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
+    if (-not (Test-Path $tar)) { throw "$tar not found (ships with Windows 10 1803+)." }
+    return $tar
+}
+
 # Locate the Inno Setup program directory (the folder with iscc.exe and its
 # Languages\ subfolder). Prefer a real install (it carries the compiler support
 # files) over a Chocolatey shim, then any iscc.exe on PATH, then -InnoRoot.
