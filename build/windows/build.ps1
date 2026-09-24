@@ -51,6 +51,14 @@
     Also build the MSI with Advanced Installer. Off by default to match the
     workflow, where the MSI step is currently commented out. Requires a license.
 
+.PARAMETER SigningBundle
+    Also write a tar at this path holding everything sign-package.ps1 needs
+    to sign and package the build on a separate signing server: the install
+    tree, the desktop-apps packaging scripts + Inno project, the VC++ redist
+    and a manifest (signing-bundle.json) with version/arch/target/names.
+    Written before the (unsigned) packaging steps, so it works together with
+    -SkipPackaging.
+
 .EXAMPLE
     # Common content already at .\common, all tools installed:
     .\build-windows.ps1
@@ -87,7 +95,8 @@ param(
 
     [switch]$InstallDeps,
     [switch]$BuildMsi,
-    [switch]$SkipPackaging
+    [switch]$SkipPackaging,
+    [string]$SigningBundle  = ''
 )
 
 Set-StrictMode -Version Latest
@@ -121,36 +130,7 @@ $env:BUILD_NUMBER         = $BuildNumber
 $env:ABOUT_PAGE_APP_NAME  = "$ProductName"
 
 # ───────────────────────────── helpers ──────────────────────────────────────
-# When this runs inside GitHub Actions, emit ::group::/::endgroup:: so each
-# phase is a collapsible, individually-timed section in the Actions log -
-# recovering the per-step UI you'd otherwise lose by calling one script.
-# Locally it prints a plain banner instead.
-$script:InActions = ($env:GITHUB_ACTIONS -eq 'true')
-$script:GroupOpen = $false
-
-function Write-Step([string]$Msg) {
-    if ($script:InActions) {
-        if ($script:GroupOpen) { Write-Host '::endgroup::' }
-        Write-Host "::group::$Msg"
-        $script:GroupOpen = $true
-    } else {
-        Write-Host ''
-        Write-Host ('=' * 78) -ForegroundColor Cyan
-        Write-Host "  $Msg" -ForegroundColor Cyan
-        Write-Host ('=' * 78) -ForegroundColor Cyan
-    }
-}
-
-function Close-StepGroup {
-    if ($script:InActions -and $script:GroupOpen) {
-        Write-Host '::endgroup::'
-        $script:GroupOpen = $false
-    }
-}
-
-function Assert-LastExit([string]$What) {
-    if ($LASTEXITCODE -ne 0) { throw "$What failed (exit $LASTEXITCODE)." }
-}
+. (Join-Path $PSScriptRoot 'packaging-helpers.ps1')
 
 function Get-VsInstallPath {
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -160,53 +140,6 @@ function Get-VsInstallPath {
             -property installationPath
     if (-not $p) { throw "No Visual Studio install with the C++ x64 toolset was found." }
     return $p
-}
-
-# Locate the Inno Setup program directory (the folder with iscc.exe and its
-# Languages\ subfolder). Prefer a real install (it carries the compiler support
-# files) over a Chocolatey shim, then any iscc.exe on PATH, then -InnoRoot.
-# Returns $null if none found. Used by both the dependency install (to stage
-# language files) and the packaging step (to set INNOPATH).
-function Get-InnoRoot([string]$Fallback) {
-    $isccItem = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*','C:\Program Files\Inno Setup*' `
-                    -Recurse -Filter iscc.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($isccItem) { return Split-Path $isccItem.FullName }
-    $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
-    if ($iscc) { return Split-Path $iscc.Source }
-    if ($Fallback -and (Test-Path (Join-Path $Fallback 'iscc.exe'))) { return $Fallback }
-    return $null
-}
-
-# Stage jrsoftware's "unofficial" Inno translations (Greek, etc.) that
-# common.iss references but that ship in NO stock Inno install - they live in a
-# separate translations collection. This is a PACKAGING INPUT (like the
-# vc_redist pre-stage), not a heavy tool install, so it must run on every
-# packaging build regardless of -InstallDeps - which is why it's called from the
-# packaging step, not gated behind -InstallDeps (CI doesn't pass that). It's
-# idempotent (skips files already present). It writes into the Inno install's
-# Languages dir, so it needs write access there: fine on CI (admin); a plain
-# local packaging run may need elevation.
-function Sync-InnoLanguages([string]$LanguagesDir) {
-    if (-not (Test-Path $LanguagesDir)) {
-        Write-Warning "Inno Languages dir not found ($LanguagesDir) - skipping unofficial language staging."
-        return
-    }
-    # Pin $issTag to the tag matching your Inno version to avoid message-version
-    # mismatches (e.g. 'is-6_7_1'); 'main' = latest.
-    $issTag  = 'is-6_7_1'
-    $apiUrl  = "https://api.github.com/repos/jrsoftware/issrc/contents/Files/Languages/Unofficial?ref=$issTag"
-    $headers = @{ 'User-Agent' = 'eo-build' }
-    # Authenticate the API call when a token is available (CI) so the single
-    # contents listing doesn't trip the 60/hr anonymous limit on shared runner IPs.
-    if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
-    $unofficial = Invoke-RestMethod -Uri $apiUrl -Headers $headers
-    foreach ($f in ($unofficial | Where-Object { $_.name -match '\.islu?$' })) {
-        $langDest = Join-Path $LanguagesDir $f.name
-        if (-not (Test-Path $langDest)) {
-            Invoke-WebRequest -Uri $f.download_url -OutFile $langDest
-            Write-Host "Staged unofficial language: $($f.name)"
-        }
-    }
 }
 
 # Run vcvars in a child cmd and import the resulting environment into THIS
@@ -527,6 +460,53 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
 
     Remove-Item -Force "$converter\allfontsgen.exe", "$converter\allthemesgen.exe"
 
+    if ($SigningBundle -or -not $SkipPackaging) {
+        Write-Step "9c. Stage VC++ redistributable"
+        Save-VcRedist $PackageDir $Arch
+    }
+
+    # ──────────────── 9d. bundle for the signing server ─────────────────────
+    # Code signing happens off-GitHub (sign-package.ps1), and a signed
+    # installer has to be built from already-signed binaries, so the signing
+    # server re-runs make.ps1/make_zip.ps1/make_inno.ps1 itself. Ship it the
+    # unpackaged install tree plus the packaging project, keeping repo-relative
+    # paths: common.iss reaches into ..\common\license and
+    # ..\..\win-linux\extras\projicons for the license and setup icon.
+    if ($SigningBundle) {
+        Write-Step "9d. Create signing bundle"
+        $manifestPath = Join-Path $RepoRoot 'signing-bundle.json'
+        [ordered]@{
+            ProductVersion = $ProductVersion
+            BuildNumber    = $BuildNumber
+            Version        = $VersionFull
+            Arch           = $Arch
+            Target         = $Target
+            CompanyName    = $CompanyName
+            ProductName    = $ProductName
+            GitCommit      = $(if ($env:GITHUB_SHA) { $env:GITHUB_SHA } else { (git -C $RepoRoot rev-parse HEAD) })
+        } | ConvertTo-Json | Set-Content -Encoding ASCII $manifestPath
+
+        # Only the Windows packaging inputs - no previous build\ / zip\ output
+        # and no installers except the staged vc_redist.
+        $pkgFiles = @(Get-ChildItem $PackageDir -File -Filter '*.ps1') +
+                    @(Get-ChildItem (Join-Path $PackageDir 'inno'), (Join-Path $PackageDir 'common') -File -Recurse |
+                        Where-Object { $_.Extension -ne '.exe' -or $_.Name -eq "vc_redist.$Arch.exe" })
+        $entries  = @('signing-bundle.json', 'desktopeditors',
+                      'desktop-apps/win-linux/extras/projicons/res/icons/desktopeditors.ico')
+        $entries += $pkgFiles | ForEach-Object {
+            $_.FullName.Substring($RepoRoot.Length).TrimStart('\', '/').Replace('\', '/')
+        }
+        $listPath = Join-Path $env:TEMP 'signing-bundle.lst'
+        [IO.File]::WriteAllText($listPath, ($entries -join "`n") + "`n")
+
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent ([IO.Path]::GetFullPath($SigningBundle))) | Out-Null
+        # bsdtar (tar.exe, part of Windows 10+).
+        tar.exe -cf $SigningBundle -C $RepoRoot -T $listPath
+        Assert-LastExit "tar signing bundle"
+        Remove-Item -Force $manifestPath, $listPath
+        Write-Host ("Signing bundle: {0} ({1:N0} MB)" -f $SigningBundle, ((Get-Item $SigningBundle).Length / 1MB))
+    }
+
     # ───────────────────────── 10/11. packaging ─────────────────────────────
     if ($SkipPackaging) {
         Write-Step "Packaging skipped (-SkipPackaging). Build output is at: $InstallDir"
@@ -549,8 +529,7 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
             Assert-LastExit "make_zip.ps1"
 
             Write-Step "11b. Build Inno installer (make_inno.ps1)"
-            # INNOPATH must point at the Inno Setup program directory. The
-            # unofficial language files it relies on are staged during -InstallDeps.
+            # INNOPATH must point at the Inno Setup program directory.
             $env:INNOPATH = Get-InnoRoot $InnoRoot
             if (-not $env:INNOPATH) {
                 throw "Inno Setup (iscc.exe) not found. Install it (run with -InstallDeps) or pass -InnoRoot."
@@ -561,33 +540,7 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
             # ship in no stock Inno install - stage them now (idempotent).
             Sync-InnoLanguages (Join-Path $env:INNOPATH 'Languages')
 
-            # make_inno.ps1 bundles the VC++ redistributable, fetching it at
-            # package time via WebClient from aka.ms (which failed on the
-            # runner). It SKIPS that download when inno\vc_redist.<arch>.exe
-            # already exists with a valid ProductVersion, so pre-stage it here
-            # with a modern, redirect-following, retrying fetch and let
-            # make_inno reuse it.
-            $vcRedist = Join-Path $PackageDir "inno\vc_redist.$Arch.exe"
-            $vcValid  = (Test-Path $vcRedist) -and (Get-Item $vcRedist).VersionInfo.ProductVersion
-            if (-not $vcValid) {
-                $vcUrl = "https://aka.ms/vs/17/release/vc_redist.$Arch.exe"
-                New-Item -ItemType Directory -Force -Path (Split-Path $vcRedist) | Out-Null
-                $got = $false
-                for ($i = 1; $i -le 5 -and -not $got; $i++) {
-                    try {
-                        Write-Host "Pre-fetching VCRedist (attempt $i): $vcUrl"
-                        Invoke-WebRequest -Uri $vcUrl -OutFile $vcRedist
-                        if ((Get-Item $vcRedist).VersionInfo.ProductVersion) { $got = $true }
-                        else { Write-Warning "Downloaded file has no ProductVersion; retrying." }
-                    } catch {
-                        Write-Warning "VCRedist fetch failed (attempt $i): $($_.Exception.Message)"
-                    }
-                    if (-not $got) { Start-Sleep -Seconds 5 }
-                }
-                if (-not $got) { throw "Could not obtain a valid vc_redist.$Arch.exe after 5 attempts." }
-            }
-            Write-Host "VCRedist staged: $((Get-Item $vcRedist).VersionInfo.ProductVersion)"
-
+            # vc_redist.<arch>.exe was pre-staged in step 9c.
             .\make_inno.ps1 -Version $VersionFull -Arch $Arch -Target $Target
             Assert-LastExit "make_inno.ps1"
 

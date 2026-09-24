@@ -435,9 +435,14 @@ jobs:
           - name: euro-office
             company_name: Euro-Office
             product_name: Euro-Office
+            # Unsigned, packaged here and published to the GitHub release.
+            sign: false
           - name: nextcloud-office
             company_name: Nextcloud Office
             product_name: Nextcloud Office
+            # Only a signing bundle here; signed + packaged on the signing
+            # server (build/windows/sign-package.ps1).
+            sign: true
     env:
       PYTHONUTF8: "1"
       NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
@@ -511,7 +516,14 @@ jobs:
       - name: Build & package
         shell: pwsh
         run: |
-          .\build\windows\build.ps1 `
+          $extra = @{}
+          if ('${{ matrix.brand.sign }}' -eq 'true') {
+            # Packages must be built from signed binaries, so leave that to
+            # the signing server.
+            $extra.SigningBundle = "${{ github.workspace }}\windows-signing-bundle.tar"
+            $extra.SkipPackaging = $true
+          }
+          .\build\windows\build.ps1 @extra `
             -CommonDir "${{ github.workspace }}\common" `
             -ProductVersion "${{ needs.version.outputs.product_version }}" `
             -BuildNumber "${{ needs.version.outputs.build_number }}" `
@@ -521,13 +533,23 @@ jobs:
             -ProductName "${{ matrix.brand.product_name }}"
 
       # ---- collect outputs (stays in the workflow) ---- #
-      - uses: actions/upload-artifact@v4
+      - if: ${{ !matrix.brand.sign }}
+        uses: actions/upload-artifact@v4
         with:
           name: windows-packages-${{ matrix.brand.name }}-${{ matrix.arch }}
           path: |
             desktop-apps/package/zip/*.zip
             desktop-apps/package/inno/*.exe
             desktop-apps/package/advinst/*.msi
+
+      # Input for build/windows/sign-package.ps1 on the signing server, which
+      # signs the binaries and builds + signs the ZIP and Inno installer.
+      - if: matrix.brand.sign
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-signing-bundle-${{ matrix.brand.name }}-${{ matrix.arch }}
+          path: windows-signing-bundle.tar
+          if-no-files-found: error
 
   # ─────────────────────────────────────────────────────────────
   # BUILD (Linux)
