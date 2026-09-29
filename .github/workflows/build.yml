@@ -951,12 +951,20 @@ jobs:
   #
   # Stable tags only (v9.3.4-stable.1). The logic lives once in the
   # DocumentServer repo and is called from here.
+  #
+  # Disabled: the called reusable workflow's 'publish' job requests
+  # 'actions: read', which this workflow doesn't grant (no permissions:
+  # block here, so the default is 'actions: none') - GitHub rejects the
+  # whole workflow as invalid at parse time over this, regardless of the
+  # 'if:' condition above (which only matters at run time). Not needed
+  # right now - re-enable once the permissions mismatch is sorted out
+  # (either grant 'actions: read' here, or drop that request upstream).
   # ─────────────────────────────────────────────────────────────
-  publish-repo:
-    needs: build-linux
-    if: startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-stable.')
-    uses: Euro-Office/DocumentServer/.github/workflows/publish-repo.yml@feat/pkgrepo ##TODO: change to main
-    with:
-      product: desktopeditors
-      artifact_pattern: 'linux-packages-nextcloud-office-*'
-    secrets: inherit
+  # publish-repo:
+  #   needs: build-linux
+  #   if: startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-stable.')
+  #   uses: Euro-Office/DocumentServer/.github/workflows/publish-repo.yml@feat/pkgrepo ##TODO: change to main
+  #   with:
+  #     product: desktopeditors
+  #     artifact_pattern: 'linux-packages-nextcloud-office-*'
+  #   secrets: inherit
