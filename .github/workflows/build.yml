@@ -529,6 +529,7 @@ jobs:
             -BuildNumber "${{ needs.version.outputs.build_number }}" `
             -Arch ${{ matrix.arch == 'arm64' && 'arm64' || 'x64' }} `
             -WinSdkVersion  ${{ matrix.arch == 'arm64' && '10.0.22621.0' || '10.0.19041.0' }} `
+            -VcToolsVersion ${{ matrix.arch == 'arm64' && '14.44' || '' }} `
             -Target standalone `
             -CompanyName "${{ matrix.brand.company_name }}" `
             -ProductName "${{ matrix.brand.product_name }}"

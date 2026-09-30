@@ -85,6 +85,7 @@ param(
     [string]$CompanyName    = 'Euro-Office',
     [string]$ProductName    = 'DesktopEditors',
     [string]$WinSdkVersion  = '10.0.19041.0',
+    [string]$VcToolsVersion = '',   # e.g. 14.44 = VS 2022 toolset; empty = newest installed
 
     # Tool locations / install knobs.
     [string]$VcpkgRoot      = $env:VCPKG_ROOT,
@@ -145,7 +146,7 @@ function Get-VsInstallPath {
 # Run vcvars in a child cmd and import the resulting environment into THIS
 # PowerShell process. vcvars only prepends MSVC/SDK dirs, so it preserves the
 # deterministic PATH ordering we set up below (native tools > Cygwin > rest).
-function Import-VcVars([string]$Arch, [string]$SdkVersion) {
+function Import-VcVars([string]$Arch, [string]$SdkVersion, [string]$VcToolsVersion) {
     $batName = switch ($Arch) {
         'x86'   { 'vcvars32.bat' }
         'arm64' { 'vcvarsarm64.bat' }   # native arm64 host (windows-11-arm)
@@ -154,17 +155,21 @@ function Import-VcVars([string]$Arch, [string]$SdkVersion) {
     $vcvars  = Join-Path (Get-VsInstallPath) "VC\Auxiliary\Build\$batName"
     if (-not (Test-Path $vcvars)) { throw "vcvars not found at $vcvars" }
 
-    $capture = & cmd /c "`"$vcvars`" $SdkVersion >NUL 2>&1 && set"
-    foreach ($line in $capture) {
+    $verArg = if ($VcToolsVersion) { "-vcvars_ver=$VcToolsVersion" } else { '' }
+    $out = & cmd /c "`"$vcvars`" $SdkVersion $verArg 2>&1 && echo __VCVARS_OK__ && set"
+    $marker = [Array]::FindIndex([string[]]$out, [Predicate[string]]{ param($l) $l.Trim() -eq '__VCVARS_OK__' })
+    if ($marker -lt 0) {
+        $out | Write-Host
+        throw "vcvars failed ($batName $SdkVersion $verArg) - see its output above."
+    }
+    foreach ($line in $out[($marker + 1)..($out.Count - 1)]) {
         $i = $line.IndexOf('=')
         if ($i -gt 0) {
-            $name  = $line.Substring(0, $i)
-            $value = $line.Substring($i + 1)
-            [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+            [Environment]::SetEnvironmentVariable($line.Substring(0, $i), $line.Substring($i + 1), 'Process')
         }
     }
     if (-not $env:VCINSTALLDIR) { throw "vcvars import failed (VCINSTALLDIR empty)." }
-    Write-Host "Imported MSVC environment from $batName ($SdkVersion)."
+    Write-Host "Imported MSVC environment from $batName (SDK $SdkVersion, tools $env:VCToolsVersion)."
 }
 
 # ───────────────────────── 0. sanity checks ─────────────────────────────────
@@ -351,7 +356,7 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
 
     # ─────────── load MSVC env (vcvars) on top of our ordered PATH ───────────
     Write-Step "Loading MSVC environment (vcvars)"
-    Import-VcVars -Arch $Arch -SdkVersion $WinSdkVersion
+    Import-VcVars -Arch $Arch -SdkVersion $WinSdkVersion -VcToolsVersion $VcToolsVersion
 
     # ───────────────────────── 7. CMake Configure ───────────────────────────
     # Generator is Ninja (NOT the VS/MSBuild generator) on purpose: MSBuild
