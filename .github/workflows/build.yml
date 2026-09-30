@@ -84,7 +84,7 @@ jobs:
             echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
             echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
           else
-            VERSION_FILE=$(cat VERSION 2>/dev/null | tr -d '[:space:]')
+            VERSION_FILE=$(cat VERSION.txt 2>/dev/null | tr -d '[:space:]')
             echo "product_version=${VERSION_FILE:-${{ env.PRODUCT_VERSION }}}" >> $GITHUB_OUTPUT
             echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
           fi
@@ -862,7 +862,8 @@ jobs:
         run: |
           ./desktop-apps/macos/apply-branding.sh \
             --company-name "${{ matrix.brand.company_name }}" \
-            --product-name "${{ matrix.brand.product_name }}"
+            --product-name "${{ matrix.brand.product_name }}" \
+            --version "${{ needs.version.outputs.product_version }}"
 
       - name: Build the Xcode project
         run: |
