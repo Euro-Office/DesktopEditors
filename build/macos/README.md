@@ -1,10 +1,10 @@
 # Building on macOS
 
-Building on macOS is three separate steps: build `desktop-sdk` natively, stage
-the result, then build the Xcode project. `build/macos/stage.sh` handles the
-middle step — overlaying the web payload onto a built `desktop-sdk` tree and
-generating fonts/theme thumbnails. It does **not** build `desktop-sdk` itself,
-and it does **not** run the Xcode build.
+Building on macOS is a few separate steps: build `desktop-sdk` natively, stage
+the result, apply branding/version, then build the Xcode project.
+`build/macos/stage.sh` handles the staging step — overlaying the web payload
+onto a built `desktop-sdk` tree and generating fonts/theme thumbnails. It does
+**not** build `desktop-sdk` itself, and it does **not** run the Xcode build.
 
 > New here? Read the **[build overview](../README.md)** first — it explains the
 > three CI jobs, the common payload, vcpkg, and caching, none of which are
@@ -28,9 +28,9 @@ and it does **not** run the Xcode build.
   mkdir -p build/deploy/common && tar -xf build/deploy/common.tar -C build/deploy/common
   ```
 
-## The three steps
+## The steps
 
-Set these once and reuse them across all three steps:
+Set these once and reuse them across all the steps below:
 ```bash
 REPO=/path/to/your/checkout
 VCPKG=/path/to/vcpkg
@@ -67,7 +67,21 @@ STAGE=/path/to/staging-root  # arbitrary, doesn't need to exist yet - step 1 cre
    (`--payload-dir` and `--core-fonts-dir` default to `build/deploy/common` and
    `core-fonts` under the repo root — override with flags or the matching env
    vars if yours live elsewhere.)
-3. **Build the Xcode project**, pointed at the staged tree:
+3. **Apply branding/version** — patches the committed `Info.plist` in place
+   with the company/product name and version to actually ship. Run this every
+   time: the committed file is just whatever was last checked in, and nothing
+   else keeps it in sync, so don't rely on it already being correct.
+   ```bash
+   "${REPO}/desktop-apps/macos/apply-branding.sh" \
+     --company-name Euro-Office \
+     --product-name Euro-Office \
+     --version "$(cat "${REPO}/VERSION.txt")"
+   ```
+   This is exactly what CI's own "Apply branding" step in `build-macos` runs
+   before `xcodebuild` — patches `NSHumanReadableCopyright`/`CFBundleName`/
+   `CFBundleShortVersionString`. Use different `--company-name`/`--product-name`
+   values to build a different brand (e.g. nextcloud-office).
+4. **Build the Xcode project**, pointed at the staged tree:
    ```bash
    xcodebuild -project "${REPO}/desktop-apps/macos/Euro-Office.xcodeproj" \
      -scheme Euro-Office-arm -configuration Release \
@@ -78,11 +92,11 @@ STAGE=/path/to/staging-root  # arbitrary, doesn't need to exist yet - step 1 cre
    `Euro-Office.app` lands directly at `${REPO}/build/macos/out/Euro-Office.app` —
    without `CONFIGURATION_BUILD_DIR`, Xcode uses its default DerivedData
    location instead (`~/Library/Developer/Xcode/DerivedData/Euro-Office-<hash>/Build/Products/<configuration>/`).
-4. **(Optional) Package a DMG installer** — `make-dmg.sh` packages the built
+5. **(Optional) Package a DMG installer** — `make-dmg.sh` packages the built
    `.app` into a distributable `.dmg` (app + `/Applications` symlink,
    background graphic), using [`appdmg`](https://github.com/LinusU/node-appdmg)
    and the config/assets in `desktop-apps/macos/fastlane/resources/`. Needs
-   Node/npm on `PATH` (not required for steps 1-3) — CI's macOS runners have
+   Node/npm on `PATH` (not required for steps 1-4) — CI's macOS runners have
    it by default.
    ```bash
    "${REPO}/build/macos/make-dmg.sh" \
