@@ -11,7 +11,4 @@ jobs:
       contents: write
       pull-requests: write
     uses: Euro-Office/DocumentServer/.github/workflows/update-submodules.yml@main
-    with:
-      runner: ubuntu-latest   # or self-hosted, if that runner group includes this repo
-    secrets:
-      EURO_OFFICE_MIRROR_TOKEN: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
+    secrets: inherit
