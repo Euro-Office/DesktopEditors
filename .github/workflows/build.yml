@@ -1029,7 +1029,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: Euro-Office/DocumentServer/.github/workflows/publish-repo.yml@feat/pkgrepo ##TODO: change to main
+    uses: Euro-Office/DocumentServer/.github/workflows/publish-repo.yml@main
     with:
       product: desktopeditors
       artifact_pattern: 'linux-packages-nextcloud-office-*'
