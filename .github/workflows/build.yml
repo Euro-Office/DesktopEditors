@@ -888,11 +888,29 @@ jobs:
           path: build/macos/out/${{ matrix.brand.dmg_name }}
 
   # ─────────────────────────────────────────────────────────────
-  # PUBLISH - euro-office to GitHub Release
+  # Classify the tag: v9.3.4-1 is stable; anything else
+  # (v9.3.4-beta.1, v9.3.4-rc.1, v9.3.1-dev.1, ...) is a prerelease.
+  # ─────────────────────────────────────────────────────────────
+  release-info:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    outputs:
+      stable: ${{ steps.check.outputs.stable }}
+    steps:
+      - id: check
+        run: |
+          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]]; then
+            echo "stable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─────────────────────────────────────────────────────────────
+  # PUBLISH - euro-office to GitHub Release (this repository)
   # ─────────────────────────────────────────────────────────────
   publish-release:
     runs-on: ubuntu-latest
-    needs: [build-linux, build-windows, build-macos]
+    needs: [release-info, build-linux, build-windows, build-macos]
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
@@ -902,13 +920,58 @@ jobs:
           pattern: '*-packages-euro-office-*'
           path: dist
           merge-multiple: true
- 
+
       - run: find dist -type f -printf '%p  %s bytes\n' | sort
- 
+
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: dist/**/*
- 
+          prerelease: ${{ needs.release-info.outputs.stable != 'true' }}
+          fail_on_unmatched_files: true
+
+  # ─────────────────────────────────────────────────────────────
+  # PUBLISH - nextcloud-office to nextcloud-releases/Office-DesktopEditors
+  #
+  # GITHUB_TOKEN can't write to another repository, so we mint a
+  # short-lived token from a GitHub App installed on nextcloud-releases.
+  # ─────────────────────────────────────────────────────────────
+  publish-nextcloud-release:
+    runs-on: ubuntu-latest
+    needs: [release-info, build-linux, build-windows, build-macos]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-packages-nextcloud-office-*'
+          path: dist
+          merge-multiple: true
+
+      - run: find dist -type f -printf '%p  %s bytes\n' | sort
+
+      - name: Get token for nextcloud-releases
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.NEXTCLOUD_RELEASES_APP_ID }}
+          private-key: ${{ secrets.NEXTCLOUD_RELEASES_APP_KEY }}
+          owner: nextcloud-releases
+          repositories: Office-DesktopEditors
+
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          repository: nextcloud-releases/Office-DesktopEditors
+          token: ${{ steps.app-token.outputs.token }}
+          tag_name: ${{ github.ref_name }}
+          name: Nextcloud Office Desktop ${{ github.ref_name }}
+          body: |
+            Built from ${{ github.repository }}@${{ github.sha }}
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          prerelease: ${{ needs.release-info.outputs.stable != 'true' }}
+          files: dist/**/*
+          fail_on_unmatched_files: true
+
   # ─────────────────────────────────────────────────────────────
   # PUBLISH - nextcloud-office to the versioned directory on the server
   #
@@ -918,16 +981,17 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   publish-files:
     runs-on: ubuntu-latest
-    needs: [version, build-linux, build-windows]
+    needs: [version, build-linux, build-windows, build-macos]
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
     steps:
- 
       - uses: actions/download-artifact@v4
         with:
           pattern: '*-packages-nextcloud-office-*'
           path: dist
           merge-multiple: true
- 
+
       - name: Upload via SSH
         env:
           SSH_KEY: ${{ secrets.NEXTCLOUD_SSH_KEY }}
@@ -943,31 +1007,30 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
           ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
- 
+
           TARGET="$REMOTE_BASE/desktopeditors/$PRODUCT_VERSION/$BUILD_NUMBER"
           ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$TARGET'"
           scp -i ~/.ssh/id_deploy -P "$SSH_PORT" -r dist/. \
             "$SSH_USER@$SSH_HOST:$TARGET/"
- 
+
   # ─────────────────────────────────────────────────────────────
   # PUBLISH - nextcloud-office to the shared APT/DNF archive
   #
-  # Stable tags only (v9.3.4-stable.1). The logic lives once in the
+  # Stable tags only (v9.3.4-1). The logic lives once in the
   # DocumentServer repo and is called from here.
   #
-  # Disabled: the called reusable workflow's 'publish' job requests
-  # 'actions: read', which this workflow doesn't grant (no permissions:
-  # block here, so the default is 'actions: none') - GitHub rejects the
-  # whole workflow as invalid at parse time over this, regardless of the
-  # 'if:' condition above (which only matters at run time). Not needed
-  # right now - re-enable once the permissions mismatch is sorted out
-  # (either grant 'actions: read' here, or drop that request upstream).
+  # A job calling a reusable workflow caps the called workflow's token
+  # permissions, so this block must be a superset of what the called
+  # workflow's jobs request (its 'publish' job wants 'actions: read').
   # ─────────────────────────────────────────────────────────────
-  # publish-repo:
-  #   needs: build-linux
-  #   if: startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, '-stable.')
-  #   uses: Euro-Office/DocumentServer/.github/workflows/publish-repo.yml@feat/pkgrepo ##TODO: change to main
-  #   with:
-  #     product: desktopeditors
-  #     artifact_pattern: 'linux-packages-nextcloud-office-*'
-  #   secrets: inherit
+  publish-repo:
+    needs: [release-info, build-linux]
+    if: needs.release-info.outputs.stable == 'true'
+    permissions:
+      contents: read
+      actions: read
+    uses: Euro-Office/DocumentServer/.github/workflows/publish-repo.yml@feat/pkgrepo ##TODO: change to main
+    with:
+      product: desktopeditors
+      artifact_pattern: 'linux-packages-nextcloud-office-*'
+    secrets: inherit
