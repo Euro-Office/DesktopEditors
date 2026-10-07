@@ -248,6 +248,12 @@ jobs:
           submodules: recursive
           token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
 
+      - name: Record build commits
+        shell: bash
+        run: |
+          echo "BUILD_COMMITS=DesktopEditors=$(git rev-parse HEAD) $(git submodule foreach --quiet 'echo $name=$(git rev-parse HEAD)' | tr '\n' ' ')" >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$(date -u +%F)" >> "$GITHUB_ENV"
+
       - name: Checkout nextcloud-office-brand repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:

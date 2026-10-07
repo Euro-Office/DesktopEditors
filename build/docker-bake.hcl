@@ -1,8 +1,12 @@
 # docker-bake.hcl
 
-variable "GIT_COMMIT" {
+variable "BUILD_COMMITS" {
   default = ""
-} 
+}
+
+variable "BUILD_DATE" {
+  default = ""
+}
 
 variable "REGISTRY" {
   default = "ghcr.io/euro-office"
@@ -77,6 +81,8 @@ target "_common" {
   args = {
     PRODUCT_VERSION     = "${PRODUCT_VERSION}"
     BUILD_NUMBER        = "${BUILD_NUMBER}"
+    BUILD_COMMITS       = "${BUILD_COMMITS}"
+    BUILD_DATE          = "${BUILD_DATE}"
     BUILD_ROOT          = "${BUILD_ROOT}"
     NUGET_CACHE         = "${NUGET_CACHE}"
     CACHE_BUST          = "${CACHE_BUST}"
