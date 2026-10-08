@@ -19,7 +19,6 @@ concurrency:
 env:
   REGISTRY: ghcr.io/euro-office
   CACHE_IMAGE_NAME: desktopeditors-build-cache
-  PRODUCT_VERSION: 9.3.1
   BUILD_NUMBER: dev.1
   BUILD_ROOT: /package
 
@@ -74,23 +73,26 @@ jobs:
 
           # Parse PRODUCT_VERSION / BUILD_NUMBER from the git tag.
           # Supported formats:
-          #   v9.3.1-stable.1  → product_version=9.3.1  build_number=stable.1
-          #   v9.3.1           → product_version=9.3.1  build_number=<env default>
-          # Fall back to the VERSION file, then env defaults, for non-tag builds.
+          #   v9.3.1-rc.1  → product_version=9.3.1  build_number=rc.1
+          #   v9.3.1       → product_version=9.3.1  build_number=0
+          # Fall back to the VERSION file for non-tag builds.
           if [[ "$IS_TAG" == "true" && "${{ github.ref_name }}" =~ ^v([^-]+)-(.+)$ ]]; then
             echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
             echo "build_number=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
+          elif [[ "$IS_TAG" == "true" && "${{ github.ref_name }}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+            echo "build_number=0" >> $GITHUB_OUTPUT
           elif [[ "$IS_TAG" == "true" && "${{ github.ref_name }}" =~ ^v(.+)$ ]]; then
             echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
             echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
           else
             VERSION_FILE=$(cat VERSION.txt 2>/dev/null | tr -d '[:space:]')
-            echo "product_version=${VERSION_FILE:-${{ env.PRODUCT_VERSION }}}" >> $GITHUB_OUTPUT
+            echo "product_version=${VERSION_FILE}" >> $GITHUB_OUTPUT
             echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
           fi
 
       # No DocumentServer equivalent — DS has no macOS target. CFBundleVersion
-      # accepts only 1-3 dot-separated integers, so 'stable.1' is rejected.
+      # accepts only 1-3 dot-separated integers, so 'rc.1' is rejected.
       - name: Derive numeric build number for Xcode
         id: mac
         run: |
@@ -888,7 +890,7 @@ jobs:
           path: build/macos/out/${{ matrix.brand.dmg_name }}
 
   # ─────────────────────────────────────────────────────────────
-  # Classify the tag: v9.3.4-1 is stable; anything else
+  # Classify the tag: v9.3.4 is stable; anything else
   # (v9.3.4-beta.1, v9.3.4-rc.1, v9.3.1-dev.1, ...) is a prerelease.
   # ─────────────────────────────────────────────────────────────
   release-info:
@@ -899,7 +901,7 @@ jobs:
     steps:
       - id: check
         run: |
-          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]]; then
+          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "stable=true" >> "$GITHUB_OUTPUT"
           else
             echo "stable=false" >> "$GITHUB_OUTPUT"
@@ -1016,7 +1018,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   # PUBLISH - nextcloud-office to the shared APT/DNF archive
   #
-  # Stable tags only (v9.3.4-1). The logic lives once in the
+  # Stable tags only (v9.3.4). The logic lives once in the
   # DocumentServer repo and is called from here.
   #
   # A job calling a reusable workflow caps the called workflow's token

@@ -135,7 +135,7 @@ matches the build.
 $env:GH_TOKEN = '<token with actions:read on Euro-Office/DesktopEditors>'
 
 # Nextcloud Office (default -Brand), all arches, latest run for a release tag:
-.\build\windows\sign-package.ps1 -Tag v9.3.1-stable.1 -CertThumbprint <sha1>
+.\build\windows\sign-package.ps1 -Tag v9.3.1 -CertThumbprint <sha1>
 
 # One arch of a specific run:
 .\build\windows\sign-package.ps1 -RunId 1234567890 -Arch amd64 -CertName "<subject>"
