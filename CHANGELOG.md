@@ -36,7 +36,6 @@
 * Fixed the title bar not updating when switching documents in X11 sessions
 * Fixed popup menus not appearing correctly on Wayland
 
-
 ## 9.3.1
 
 ### Fixes
