@@ -1,5 +1,41 @@
 # Change log
 
+## 9.3.5
+
+### New features
+
+#### All Editors
+
+* Added Danish language support
+* Updated Ukrainian and Estonian translations
+
+### Fixes
+
+#### All Editors
+
+* Fixed application name shown in file metadata (Author/Creator fields)
+* Fixed background color not being preserved in ODT files
+* Fixed the Save as Picture function producing a broken image link
+* Fixed menu icons not rendering (appeared blank due to a dead CSS sprite reference)
+* Fixed plugins failing to register and autostart in background-only stores
+* Fixed TLS certificate verification for file transfers
+
+#### Spreadsheet Editor
+
+* Fixed scroll wheel being suppressed in the spreadsheet on macOS
+* Fixed currency symbols being lost when saving and reopening ODS files
+
+#### PDF Editor
+
+* Fixed annotation timestamps being corrupted when saving a PDF
+
+#### Desktop Client (Linux)
+
+* Fixed oversized and mis-styled message dialogs on Wayland
+* Fixed DPI scaling being applied twice, causing blown-up UI elements on Wayland
+* Fixed the title bar not updating when switching documents in X11 sessions
+* Fixed popup menus not appearing correctly on Wayland
+
 ## 9.3.1
 
 ### Fixes

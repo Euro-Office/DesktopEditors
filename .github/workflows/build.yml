@@ -322,18 +322,23 @@ jobs:
           set: |
             *.context=..
             core-wasm.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-wasm-buildcache
+            core-wasm.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}core-wasm-buildcache
             core-wasm.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-wasm-buildcache,mode=max
             core-wasm.tags=
             sdkjs-desktop.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}sdkjs-desktop-buildcache
+            sdkjs-desktop.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}sdkjs-desktop-buildcache
             sdkjs-desktop.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}sdkjs-desktop-buildcache,mode=max
             sdkjs-desktop.tags=
             desktop-js.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-js-buildcache
+            desktop-js.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}desktop-js-buildcache
             desktop-js.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-js-buildcache,mode=max
             desktop-js.tags=
             web-apps.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}web-apps-buildcache
+            web-apps.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}web-apps-buildcache
             web-apps.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}web-apps-buildcache,mode=max
             web-apps.tags=
             desktop-common.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache
+            desktop-common.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}desktop-common-buildcache
             desktop-common.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache,mode=max
             desktop-common.tags=${{ format('{0}/{1}:{2}', env.REGISTRY, matrix.brand.image_name, needs.version.outputs.sha_short) }}
             desktop-common.output=type=tar,dest=./common.tar
@@ -682,13 +687,16 @@ jobs:
           set: |
             *.context=../..
             core-base.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache
+            core-base.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}core-base-buildcache
             core-base.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache,mode=max
             core-base.tags=
             desktop-linux.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache
+            desktop-linux.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache
             desktop-linux.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache,mode=max
             desktop-linux.tags=
             desktop-linux.contexts.desktop-common=./common
             packages.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}packages-buildcache
+            packages.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}packages-buildcache
             packages.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}packages-buildcache,mode=max
             packages.tags=
         env:
@@ -1029,7 +1037,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: Euro-Office/DocumentServer/.github/workflows/publish-repo.yml@feat/pkgrepo ##TODO: change to main
+    uses: Euro-Office/DocumentServer/.github/workflows/publish-repo.yml@main
     with:
       product: desktopeditors
       artifact_pattern: 'linux-packages-nextcloud-office-*'
