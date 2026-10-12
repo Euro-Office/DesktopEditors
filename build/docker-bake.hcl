@@ -46,7 +46,7 @@ variable "BRANDING_DIR" {
 }
 
 variable "COMPANY_NAME" {
-  default = "CenOffice"
+  default = "Secure Office Suite"
 }
 
 variable "COMPANY_NAME_LOW" {

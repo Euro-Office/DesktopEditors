@@ -1,7 +1,7 @@
 [submodule "desktop-apps"]
 	path = desktop-apps
 	url = https://github.com/workplace4cm/desktop-apps.git
-	branch = cenoffice
+	branch = secure-office
 [submodule "desktop-sdk"]
 	path = desktop-sdk
 	url = https://github.com/Euro-Office/desktop-sdk.git
@@ -17,7 +17,7 @@
 [submodule "web-apps"]
 	path = web-apps
 	url = https://github.com/workplace4cm/web-apps.git
-	branch = cenoffice
+	branch = secure-office
 [submodule "document-templates"]
 	path = document-templates
 	url = https://github.com/Euro-Office/document-templates.git

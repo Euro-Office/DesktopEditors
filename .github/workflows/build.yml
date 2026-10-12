@@ -1,4 +1,4 @@
-name: Build CenOffice (Windows/Linux)
+name: Build Secure Office Suite (Windows/Linux)
 
 on:
   push:
@@ -26,9 +26,9 @@ env:
 # ─────────────────────────────────────────────────────────────
 # BRANDING
 #
-# CenOffice fork: a single brand, built for amd64 Windows and Linux.
-# The CenOffice icons, logos and installer art are committed directly in
-# the desktop-apps fork, and the editor theme (web-apps/theme/cenoffice)
+# Secure Office Suite fork: a single brand, built for amd64 Windows and Linux.
+# The Secure Office Suite icons, logos and installer art are committed directly in
+# the desktop-apps fork, and the editor theme (web-apps/theme/secure-office-suite)
 # in the web-apps fork, so no separate brand repo is checked out here.
 # The bake graph still takes three variables:
 #
@@ -125,7 +125,7 @@ jobs:
       fail-fast: false
       matrix:
         brand:
-          - name: cenoffice
+          - name: secure-office-suite
             extra_bake_files: ""
             cache_prefix: ""
             expect_assets: false          # dummy target: empty overlay by design
@@ -208,9 +208,9 @@ jobs:
       fail-fast: false
       matrix:
         brand:
-          - name: cenoffice
+          - name: secure-office-suite
             image_name: desktop-common
-            company_name: CenOffice
+            company_name: Secure Office Suite
             product_name: Desktop Editors
             branding_dir: "."
             extra_bake_files_common: ""
@@ -346,8 +346,8 @@ jobs:
         arch:
           - amd64
         brand:
-          - name: cenoffice
-            company_name: CenOffice
+          - name: secure-office-suite
+            company_name: Secure Office Suite
             product_name: Desktop Editors
             # Unsigned, packaged here and published to the GitHub release.
             sign: false
@@ -476,8 +476,8 @@ jobs:
         arch:
           - amd64
         brand:
-          - name: cenoffice
-            company_name: CenOffice
+          - name: secure-office-suite
+            company_name: Secure Office Suite
             product_name: Desktop Editors
             branding_dir: "."
             extra_bake_files_linux: ""
@@ -618,7 +618,7 @@ jobs:
           fi
 
   # ─────────────────────────────────────────────────────────────
-  # PUBLISH - CenOffice to GitHub Release (this repository)
+  # PUBLISH - Secure Office Suite to GitHub Release (this repository)
   # ─────────────────────────────────────────────────────────────
   publish-release:
     runs-on: ubuntu-latest
@@ -629,7 +629,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: '*-packages-cenoffice-*'
+          pattern: '*-packages-secure-office-suite-*'
           path: dist
           merge-multiple: true
 

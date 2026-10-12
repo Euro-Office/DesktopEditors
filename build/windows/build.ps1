@@ -82,7 +82,7 @@ param(
     [string]$BuildNumber    = 'dev.1',
     [string]$Arch           = 'x64',
     [string]$Target         = 'standalone',
-    [string]$CompanyName    = 'CenOffice',
+    [string]$CompanyName    = 'Secure Office Suite',
     [string]$ProductName    = 'DesktopEditors',
     [string]$WinSdkVersion  = '10.0.19041.0',
     [string]$VcToolsVersion = '',   # e.g. 14.44 = VS 2022 toolset; empty = newest installed
@@ -128,7 +128,7 @@ $PackageDir  = Join-Path $RepoRoot 'desktop-apps\package'
 # packaging scripts all inherit them.
 $env:PRODUCT_VERSION      = $ProductVersion
 $env:BUILD_NUMBER         = $BuildNumber
-$env:ABOUT_PAGE_APP_NAME  = "$ProductName"
+$env:ABOUT_PAGE_APP_NAME  = "$CompanyName"   # top-bar label shows the brand, as on Linux
 
 # ───────────────────────────── helpers ──────────────────────────────────────
 . (Join-Path $PSScriptRoot 'packaging-helpers.ps1')

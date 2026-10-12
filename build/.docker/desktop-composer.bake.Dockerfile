@@ -16,8 +16,9 @@ FROM scratch AS desktop-common
     COPY web-apps/apps/api/documents/index.html.desktop /editors/web-apps/apps/api/documents/index.html
     
     COPY desktop-apps/common/converter/* /converter/
-    # Support only Nextcloud for now
-    COPY desktop-apps/common/loginpage/providers/nextcloud /providers/nextcloud
+    # Secure Office Suite works offline: no cloud providers are shipped, the
+    # directory stays (empty) because the Windows build copies it out
+    WORKDIR /providers
     COPY desktop-apps/common/templates /converter/templates
 
     COPY desktop-sdk/ChromiumBasedEditors/resources/ /editors/sdkjs/common/Images/
