@@ -12,6 +12,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Jobs get only the token scopes they list; publish-release is the only one
+# that can write to the repository.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -190,7 +195,7 @@ jobs:
 
           tar -czf brand-assets.tar.gz -C "$OUT" .
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: brand-assets-${{ matrix.brand.name }}
           path: brand-assets.tar.gz
@@ -202,8 +207,8 @@ jobs:
     runs-on: 'ubuntu-latest'
     needs: [version, brand-assets]
     permissions:
-      contents: write
-      packages: write
+      contents: read
+      packages: write          # registry build cache only
     strategy:
       fail-fast: false
       matrix:
@@ -237,7 +242,7 @@ jobs:
         id: buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: wasm-cache
         with:
           path: |
@@ -249,7 +254,7 @@ jobs:
             ${{ runner.os }}-wasm-${{ matrix.brand.name }}-
             ${{ runner.os }}-wasm-
 
-      - uses: reproducible-containers/buildkit-cache-dance@v3.4.0
+      - uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
         with:
           builder: ${{ steps.buildx.outputs.name }}
           cache-map: |
@@ -266,7 +271,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: brand-assets-${{ matrix.brand.name }}
           path: brand-assets
@@ -322,7 +327,7 @@ jobs:
           NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
           NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: common-files-${{ matrix.brand.name }}
           path: ./build/common.tar
@@ -366,7 +371,7 @@ jobs:
           token: ${{ github.token }}
 
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: common-files-${{ matrix.brand.name }}
           path: . # lands as .\common.tar
@@ -379,7 +384,7 @@ jobs:
 
       # Install Cygwin WITHOUT touching PATH (the script does the PATH ordering).
       - name: Install Cygwin
-        uses: cygwin/cygwin-install-action@v4
+        uses: cygwin/cygwin-install-action@006ad0b0946ca6d0a3ea2d4437677fa767392401 # v4
         with:
           install-dir: 'C:\cygwin64'
           add-to-path: false
@@ -396,16 +401,16 @@ jobs:
         run: python -m pip install --upgrade --break-system-packages aqtinstall
 
       - name: Set up sccache
-        uses: mozilla-actions/sccache-action@v0.0.10 # puts sccache on PATH + exports the cache tokens
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10 # puts sccache on PATH + exports the cache tokens
 
       - name: Install Ninja
         shell: pwsh
         run: choco install ninja -y --no-progress
 
       - name: Set up vcpkg
-        uses: lukka/run-vcpkg@v11 # exports VCPKG_ROOT for the script
+        uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11 # exports VCPKG_ROOT for the script
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: brand-assets-${{ matrix.brand.name }}
           path: brand-assets
@@ -438,7 +443,7 @@ jobs:
 
       # ---- collect outputs (stays in the workflow) ---- #
       - if: ${{ !matrix.brand.sign }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-packages-${{ matrix.brand.name }}-${{ matrix.arch }}
           path: |
@@ -449,7 +454,7 @@ jobs:
       # Input for build/windows/sign-package.ps1 on the signing server, which
       # signs the binaries and builds + signs the ZIP and Inno installer.
       - if: matrix.brand.sign
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-signing-bundle-${{ matrix.brand.name }}-${{ matrix.arch }}
           path: windows-signing-bundle.tar
@@ -468,8 +473,8 @@ jobs:
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     needs: [version, build-common, brand-assets]
     permissions:
-      contents: write
-      packages: write
+      contents: read
+      packages: write          # registry build cache only
     strategy:
       fail-fast: false
       matrix:
@@ -492,7 +497,7 @@ jobs:
           token: ${{ github.token }}
 
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: common-files-${{ matrix.brand.name }}
           path: ./build/linux
@@ -515,7 +520,7 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Restore desktop build caches
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: desktop-cache
         with:
           path: |
@@ -527,7 +532,7 @@ jobs:
             ${{ runner.os }}-desktop-
 
       - name: Inject caches into BuildKit
-        uses: reproducible-containers/buildkit-cache-dance@v3.4.0
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
         with:
           builder: ${{ steps.buildx.outputs.name }}
           cache-map: |
@@ -544,7 +549,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: brand-assets-${{ matrix.brand.name }}
           path: brand-assets
@@ -590,7 +595,7 @@ jobs:
           NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
           NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: linux-packages-${{ matrix.brand.name }}-${{ matrix.arch }}
           path: |
@@ -627,13 +632,21 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: '*-packages-secure-office-suite-*'
           path: dist
           merge-multiple: true
 
       - run: find dist -type f -printf '%p  %s bytes\n' | sort
+
+      # The installer is not code-signed yet, so publish checksums people can
+      # compare against before running it.
+      - name: Write SHA256SUMS
+        run: |
+          cd dist
+          find . -type f ! -name SHA256SUMS -printf '%P\n' | sort | xargs -d '\n' sha256sum > SHA256SUMS
+          cat SHA256SUMS
 
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
