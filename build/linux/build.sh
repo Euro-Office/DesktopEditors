@@ -8,7 +8,7 @@ TAG="latest"
 PRODUCT_VERSION=$(cat ../../VERSION.txt)
 BUILD_NUMBER="dev.0"
 BRANDING_DIR="../"
-COMPANY_NAME="CenOffice"
+COMPANY_NAME="Secure Office Suite"
 PRODUCT_NAME="Desktop Editors"
 GIT_COMMIT=$(git rev-parse --short HEAD)
 
