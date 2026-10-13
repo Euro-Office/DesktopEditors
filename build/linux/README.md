@@ -20,10 +20,9 @@ packages are installed inside the images, not on your machine.
 
 ## One-time builder setup
 
-Docker ships with a default builder that uses the `docker` driver. That driver
-does not support cache export (`cache-to`), which the bake files use to save
-layer cache between builds. If you try to build with the default driver you'll
-get:
+The default `docker` driver supports the local cache export (`cache-to`) used by
+these bake files when Docker's containerd image store is enabled. If it is not
+enabled, the build fails with:
 
 ```
 ERROR: Cache export is not supported for the docker driver.
