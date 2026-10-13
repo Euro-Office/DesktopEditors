@@ -4,13 +4,13 @@
 	branch = secure-office
 [submodule "desktop-sdk"]
 	path = desktop-sdk
-	url = https://github.com/Euro-Office/desktop-sdk.git
+	url = https://github.com/workplace4cm/desktop-sdk.git
 [submodule "core"]
 	path = core
-	url = https://github.com/Euro-Office/core.git
+	url = https://github.com/workplace4cm/core.git
 [submodule "sdkjs"]
 	path = sdkjs
-	url = https://github.com/Euro-Office/sdkjs.git
+	url = https://github.com/workplace4cm/sdkjs.git
 [submodule "dictionaries"]
 	path = dictionaries
 	url = https://github.com/Euro-Office/dictionaries.git

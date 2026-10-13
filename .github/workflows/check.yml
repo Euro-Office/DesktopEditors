@@ -7,18 +7,21 @@ on:
       - 'CHANGELOG.md'
       - '.aspell.*.pws'
 
+permissions:
+  contents: read
+
 jobs:
   markdownlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: DavidAnson/markdownlint-cli2-action@v9
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: DavidAnson/markdownlint-cli2-action@5b7c9f74fec47e6b15667b2cc23c63dff11e449e # v9
         with:
           globs: 'CHANGELOG.md'
   spellchecker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup aspell
         run: sudo apt-get -y update && sudo apt-get -y install aspell aspell-en
       - name: Run spellchecker
