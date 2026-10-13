@@ -946,8 +946,10 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   # PUBLISH - nextcloud-office to nextcloud-releases/Office-DesktopEditors
   #
-  # GITHUB_TOKEN can't write to another repository, so we mint a
-  # short-lived token from a GitHub App installed on nextcloud-releases.
+  # GITHUB_TOKEN can't write to another repository, so this uses
+  # NEXTCLOUD_RELEASES_TOKEN: a classic PAT of the nextcloud-releases bot
+  # account (scopes: public_repo, write:packages). The same token publishes
+  # the DocumentServer release and its image on ghcr.io/nextcloud-releases.
   # ─────────────────────────────────────────────────────────────
   publish-nextcloud-release:
     runs-on: ubuntu-latest
@@ -964,19 +966,10 @@ jobs:
 
       - run: find dist -type f -printf '%p  %s bytes\n' | sort
 
-      - name: Get token for nextcloud-releases
-        id: app-token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.NEXTCLOUD_RELEASES_APP_ID }}
-          private-key: ${{ secrets.NEXTCLOUD_RELEASES_APP_KEY }}
-          owner: nextcloud-releases
-          repositories: Office-DesktopEditors
-
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           repository: nextcloud-releases/Office-DesktopEditors
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ secrets.NEXTCLOUD_RELEASES_TOKEN }}
           tag_name: ${{ github.ref_name }}
           name: Nextcloud Office Desktop ${{ github.ref_name }}
           body: |
