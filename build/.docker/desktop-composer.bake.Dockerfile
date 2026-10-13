@@ -13,8 +13,6 @@ FROM scratch AS desktop-common
     COPY --from=desktop-js /app/loginpage/deploy/index.html /index.html
     COPY --from=desktop-js /app/loginpage/deploy/noconnect.html /editors/webext/noconnect.html
 
-    COPY web-apps/apps/api/documents/index.html.desktop /editors/web-apps/apps/api/documents/index.html
-    
     COPY desktop-apps/common/converter/* /converter/
     # Support only Nextcloud for now
     COPY desktop-apps/common/loginpage/providers/nextcloud /providers/nextcloud

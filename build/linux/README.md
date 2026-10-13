@@ -18,6 +18,27 @@ so it needs almost nothing installed on the host.
 That's it — the C++ toolchain, Qt, the WASM toolchain, and all system `-dev`
 packages are installed inside the images, not on your machine.
 
+## One-time builder setup
+
+The default `docker` driver supports the local cache export (`cache-to`) used by
+these bake files when Docker's containerd image store is enabled. If it is not
+enabled, the build fails with:
+
+```
+ERROR: Cache export is not supported for the docker driver.
+```
+
+Create a builder that uses the `docker-container` driver instead (this runs
+BuildKit as a sidecar container, which supports cache export):
+
+```sh
+docker buildx create --name desktop-editors --driver docker-container --use
+```
+
+The `--use` flag makes it the active builder for all subsequent `docker buildx`
+commands. This is a one-time step — once the builder exists you can switch back
+to it at any time with `docker buildx use desktop-editors`.
+
 ## Quick start
 
 Run from the **repository root**. The bake graph is defined in
