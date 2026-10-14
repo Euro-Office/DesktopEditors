@@ -421,14 +421,9 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
     if ($rc -ge 8) { throw "robocopy overlay failed (exit $rc)." }
     $global:LASTEXITCODE = 0
 
+    # converter\converter.manifest (the private "converter" SxS assembly) is
+    # installed by CMake with the processorArchitecture of the build.
     $converter = Join-Path $InstallDir 'converter'
-
-    # Deploy the SxS assembly manifest that makes converter\ a private "converter"
-    # assembly. graphics.dll/kernel.dll carry an embedded dependency on it, so
-    # without this the converter tools (and the app) fail to launch with
-    # 0xC0150002 (STATUS_SXS_CANT_GEN_ACTCTX).
-    Copy-Item (Join-Path $RepoRoot 'core\Common\msvc\converter.manifest') `
-              (Join-Path $converter 'converter.manifest') -Force
 
     # ─────────── 9b. generate fonts + slide-theme thumbnails ────────────────
     # allfontsgen builds the native AllFonts.js + font_selection.bin (in
@@ -438,7 +433,7 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
     # skipped, which makes allthemesgen's doctrenderer fault on first run.
     # allthemesgen then renders the slide-theme thumbnails through doctrenderer.
     # The generators run as native exes from converter\ and launch correctly
-    # because step 9 deployed converter.manifest. Both tools are deleted
+    # because cmake --install deployed converter.manifest. Both tools are deleted
     # afterward so they don't ship in the package.
     Write-Step "9b. Generate fonts and theme thumbnails"
 
