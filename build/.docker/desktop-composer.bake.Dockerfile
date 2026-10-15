@@ -34,9 +34,11 @@ FROM scratch AS desktop-common
     COPY core-fonts/asana      /fonts/asana
     COPY core-fonts/caladea    /fonts/caladea
     COPY core-fonts/crosextra  /fonts/crosextra
-    # Liberation and DejaVu ship with the app so the .deb needs no font packages
-    COPY core-fonts/liberation /fonts/liberation
-    COPY core-fonts/dejavu     /fonts/dejavu
+    # Liberation, DejaVu and Takao Gothic (Japanese) ship with the app so the
+    # .deb needs no font packages on PCs without internet
+    COPY core-fonts/liberation   /fonts/liberation
+    COPY core-fonts/dejavu       /fonts/dejavu
+    COPY core-fonts/takao-gothic /fonts/takao-gothic
     COPY core-fonts/openoffice /fonts/openoffice
     COPY core-fonts/ASC.ttf    /fonts/ASC.ttf
 
