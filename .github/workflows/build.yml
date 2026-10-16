@@ -779,7 +779,7 @@ jobs:
             company_name: Nextcloud Office
             product_name: Nextcloud Office
             bundle_id: asc.nextcloud-office.Nextcloud-Office
-            app_icon_svg: build/brands/nextcloud-office-brand/svg/logo-light.svg
+            app_icon_svg: build/brands/nextcloud-office-brand/svg/app-icon.svg
             tab_icon_light_svg: build/brands/nextcloud-office-brand/svg/logo-light.svg
             tab_icon_dark_svg: build/brands/nextcloud-office-brand/svg/logo-dark.svg
     env:
