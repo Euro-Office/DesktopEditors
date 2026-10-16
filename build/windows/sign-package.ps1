@@ -31,7 +31,7 @@
     Workflow run to take the bundles from.
 
 .PARAMETER Tag
-    Use the latest completed run of -Workflow for this tag (e.g. v9.3.1-stable.1)
+    Use the latest completed run of -Workflow for this tag (e.g. v9.3.1)
     instead of -RunId.
 
 .PARAMETER Brand
@@ -65,7 +65,7 @@
 .EXAMPLE
     # Nextcloud Office builds of the latest run for a release tag, cert by thumbprint:
     $env:GH_TOKEN = '<token with actions:read>'
-    .\build\windows\sign-package.ps1 -Tag v9.3.1-stable.1 -CertThumbprint 0123...CDEF
+    .\build\windows\sign-package.ps1 -Tag v9.3.1 -CertThumbprint 0123...CDEF
 
 .EXAMPLE
     # Only the x64 build of a specific run:

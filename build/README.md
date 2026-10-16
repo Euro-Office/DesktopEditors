@@ -102,12 +102,13 @@ slower without it) but strongly recommended in CI.
 
 ### Versioning and branding
 
-These come from the workflow's top-level environment and can be overridden
-locally:
+In CI, `PRODUCT_VERSION` and `BUILD_NUMBER` come from the tag (`v9.3.6` →
+`9.3.6` / `0`, `v9.3.6-rc.1` → `9.3.6` / `0~rc.1`), otherwise from `VERSION.txt`
+and `dev.1`. They can be overridden locally:
 
 | Variable                          | Meaning                                  | Default                |
 | --------------------------------- | ---------------------------------------- | ---------------------- |
-| `PRODUCT_VERSION`                 | marketing version                        | `9.3.1`                |
+| `PRODUCT_VERSION`                 | marketing version                        | `VERSION.txt`          |
 | `BUILD_NUMBER`                    | build identifier                         | `dev.1`                |
 | `COMPANY_NAME` / `PRODUCT_NAME`   | shown in the app's About page            | `Euro-Office` / `DesktopEditors` |
 
