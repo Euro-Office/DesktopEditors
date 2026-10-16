@@ -1,5 +1,85 @@
 # Changelog
 
+## v9.3.6-test.1
+
+### Features
+
+* DesktopEditors: New app icon for NC branding by Aiiaiiio in [DesktopEditors#156](https://github.com/Euro-Office/DesktopEditors/pull/156)
+* desktop-apps: about: render shared About text with build commits by juliusknorr in [desktop-apps#58](https://github.com/Euro-Office/desktop-apps/pull/58)
+* web-apps: about: show build commits and Euro-Office legal notice by juliusknorr in [web-apps#332](https://github.com/Euro-Office/web-apps/pull/332)
+
+### Bug fixes
+
+* DesktopEditors: win: restore app icons and use one arch-aware manifest for editors.exe by rikled in [DesktopEditors#145](https://github.com/Euro-Office/DesktopEditors/pull/145)
+* DesktopEditors: use PAT instead of github app token by rikled in [DesktopEditors#129](https://github.com/Euro-Office/DesktopEditors/pull/129)
+* desktop-apps: Removing link to OO help center by Aiiaiiio in [desktop-apps#59](https://github.com/Euro-Office/desktop-apps/pull/59)
+* desktop-apps: linux: UI freezes when window is maximized on GNOME Wayland by rikled in [desktop-apps#61](https://github.com/Euro-Office/desktop-apps/pull/61)
+* desktop-apps: win: build projicons launcher as DesktopEditors.exe by rikled in [desktop-apps#62](https://github.com/Euro-Office/desktop-apps/pull/62)
+* desktop-apps: linux: don't send empty current_filter to XDG portal by rikled in [desktop-apps#63](https://github.com/Euro-Office/desktop-apps/pull/63)
+* desktop-apps: package: set Euro-Office as publisher/maintainer by rikled in [desktop-apps#64](https://github.com/Euro-Office/desktop-apps/pull/64)
+* desktop-apps: win: stop installer mistaking OnlyOffice for Euro-Office by rikled in [desktop-apps#67](https://github.com/Euro-Office/desktop-apps/pull/67)
+* desktop-apps: SIGTERM crash on Linux by rikled in [desktop-apps#68](https://github.com/Euro-Office/desktop-apps/pull/68)
+* desktop-apps: win: restore app icons and use one arch-aware manifest for editors.exe by rikled in [desktop-apps#66](https://github.com/Euro-Office/desktop-apps/pull/66)
+* desktop-apps: Keep the event loop running while the XDG portal file dialog is open by rikled in [desktop-apps#69](https://github.com/Euro-Office/desktop-apps/pull/69)
+* desktop-apps: add libxcb-cursor dependency to Linux packages by rikled in [desktop-apps#71](https://github.com/Euro-Office/desktop-apps/pull/71)
+* desktop-sdk: wayland: don't send composed characters as virtual key codes by rikled in [desktop-sdk#18](https://github.com/Euro-Office/desktop-sdk/pull/18)
+* desktop-sdk: SIGTERM crash on Linux by rikled in [desktop-sdk#19](https://github.com/Euro-Office/desktop-sdk/pull/19)
+* desktop-sdk: branding: change default converter application name to Euro-Office by DmySyz in [desktop-sdk#20](https://github.com/Euro-Office/desktop-sdk/pull/20)
+* core: odf: avoid crash on custom shape with empty formula by juliusknorr in [core#161](https://github.com/Euro-Office/core/pull/161)
+* core: linux: stop libgraphics and PdfFile from exporting bundled third-party symbols by rikled in [core#164](https://github.com/Euro-Office/core/pull/164)
+* dictionaries: add missing licences by rikled in [dictionaries#8](https://github.com/Euro-Office/dictionaries/pull/8)
+* dictionaries: add Nextcloud to spellcheck dictionaries for all languages by DmySyz in [dictionaries#10](https://github.com/Euro-Office/dictionaries/pull/10)
+* web-apps: Fixing support and help URLs by Aiiaiiio in [web-apps#335](https://github.com/Euro-Office/web-apps/pull/335)
+* web-apps: de-mobile: keep documents editable on mobile with forceView=false by jpxd in [web-apps#336](https://github.com/Euro-Office/web-apps/pull/336)
+* web-apps: collapse empty icon svgs inflating language menus (#165) by moodyjmz in [web-apps#167](https://github.com/Euro-Office/web-apps/pull/167)
+* web-apps: common: draw svgicon button icons again by bargib in [web-apps#321](https://github.com/Euro-Office/web-apps/pull/321)
+
+### Other changes
+
+* DesktopEditors: chore: Preparation for 9.3.5 release by Aiiaiiio in [DesktopEditors#96](https://github.com/Euro-Office/DesktopEditors/pull/96)
+* DesktopEditors: Fix: Update issue template urls by cbossaers in [DesktopEditors#131](https://github.com/Euro-Office/DesktopEditors/pull/131)
+* DesktopEditors: Fix/support links by Aiiaiiio in [DesktopEditors#127](https://github.com/Euro-Office/DesktopEditors/pull/127)
+* DesktopEditors: docs: add install section by juliusknorr in [DesktopEditors#147](https://github.com/Euro-Office/DesktopEditors/pull/147)
+* DesktopEditors: chore: update submodules to latest main branch by rikled in [DesktopEditors#100](https://github.com/Euro-Office/DesktopEditors/pull/100)
+* DesktopEditors: ci: sync workflows from organization templates by eo-robot in [DesktopEditors#130](https://github.com/Euro-Office/DesktopEditors/pull/130)
+* DesktopEditors: build: pass build commits to the About dialog by juliusknorr in [DesktopEditors#121](https://github.com/Euro-Office/DesktopEditors/pull/121)
+* DesktopEditors: ci: treat vX.Y.Z as stable release tag by juliusknorr in [DesktopEditors#98](https://github.com/Euro-Office/DesktopEditors/pull/98)
+* DesktopEditors: ci: split prerelease versions from VERSION.txt by juliusknorr in [DesktopEditors#160](https://github.com/Euro-Office/DesktopEditors/pull/160)
+* desktop-apps: ci: sync workflows from organization templates by eo-robot in [desktop-apps#60](https://github.com/Euro-Office/desktop-apps/pull/60)
+* desktop-apps: chore(loginpage): remove unused externalcloud.json by juliusknorr in [desktop-apps#65](https://github.com/Euro-Office/desktop-apps/pull/65)
+* desktop-sdk: ci: sync workflows from organization templates by eo-robot in [desktop-sdk#17](https://github.com/Euro-Office/desktop-sdk/pull/17)
+* core: ci(codeql): scan this repository instead of upstream by juliusknorr in [core#162](https://github.com/Euro-Office/core/pull/162)
+* core: ci: sync workflows from organization templates by eo-robot in [core#163](https://github.com/Euro-Office/core/pull/163)
+* sdkjs: chore(deps): update dependency terser to v5.51.2 by renovate[bot] in [sdkjs#73](https://github.com/Euro-Office/sdkjs/pull/73)
+* sdkjs: ci: sync workflows from organization templates by eo-robot in [sdkjs#113](https://github.com/Euro-Office/sdkjs/pull/113)
+* sdkjs: chore(deps): update dependency python to 3.15 by renovate[bot] in [sdkjs#111](https://github.com/Euro-Office/sdkjs/pull/111)
+* sdkjs: chore(deps): update actions/checkout action to v7 by renovate[bot] in [sdkjs#100](https://github.com/Euro-Office/sdkjs/pull/100)
+* dictionaries: ci: sync workflows from organization templates by eo-robot in [dictionaries#11](https://github.com/Euro-Office/dictionaries/pull/11)
+* web-apps: chore(deps): update github/codeql-action action to v4.38.3 by renovate[bot] in [web-apps#325](https://github.com/Euro-Office/web-apps/pull/325)
+* web-apps: chore(deps): update dependency python to 3.15 by renovate[bot] in [web-apps#326](https://github.com/Euro-Office/web-apps/pull/326)
+* web-apps: ci: sync workflows from organization templates by eo-robot in [web-apps#337](https://github.com/Euro-Office/web-apps/pull/337)
+* web-apps: ci: sync workflows from organization templates by eo-robot in [web-apps#338](https://github.com/Euro-Office/web-apps/pull/338)
+* web-apps: chore(deps): update github/codeql-action action to v4.39.0 by renovate[bot] in [web-apps#341](https://github.com/Euro-Office/web-apps/pull/341)
+* web-apps: chore(deps): update dependency webpack to v5.112.0 by renovate[bot] in [web-apps#342](https://github.com/Euro-Office/web-apps/pull/342)
+* web-apps: chore(l10n): update translations by hosted-weblate[bot] in [web-apps#318](https://github.com/Euro-Office/web-apps/pull/318)
+* document-templates: i18n(da): one prompt for each placeholder in the new presentation by bargib in [document-templates#7](https://github.com/Euro-Office/document-templates/pull/7)
+* document-templates: ci: sync workflows from organization templates by eo-robot in [document-templates#9](https://github.com/Euro-Office/document-templates/pull/9)
+* core-fonts: ci: sync workflows from organization templates by eo-robot in [core-fonts#8](https://github.com/Euro-Office/core-fonts/pull/8)
+* sdkjs-forms: ci: sync workflows from organization templates by eo-robot in [sdkjs-forms#7](https://github.com/Euro-Office/sdkjs-forms/pull/7)
+
+### Compare to v9.3.5-2
+
+* DesktopEditors: https://github.com/Euro-Office/DesktopEditors/compare/0d20c7d8087d...c6017231ff35
+* desktop-apps: https://github.com/Euro-Office/desktop-apps/compare/ef3d935cb433...c2ba275ca5ea
+* desktop-sdk: https://github.com/Euro-Office/desktop-sdk/compare/0d3bb837bab4...8cc8d747cb48
+* core: https://github.com/Euro-Office/core/compare/5a33ce6c4a63...a4a1ba1e9c8e
+* sdkjs: https://github.com/Euro-Office/sdkjs/compare/0cde84e8dbfb...40d9b7780f11
+* dictionaries: https://github.com/Euro-Office/dictionaries/compare/08d46f8631b8...0020f5ed5174
+* web-apps: https://github.com/Euro-Office/web-apps/compare/51c706eb6196...31569872a796
+* document-templates: https://github.com/Euro-Office/document-templates/compare/554851735b1f...40cc88d509ba
+* core-fonts: https://github.com/Euro-Office/core-fonts/compare/2de90688e07e...9cd64d6eedc7
+* sdkjs-forms: https://github.com/Euro-Office/sdkjs-forms/compare/e7859d1d421f...5c2f5a010dae
+
 ## 9.3.5
 
 ### New features
