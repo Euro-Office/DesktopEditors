@@ -1,4 +1,4 @@
-# Change log
+# Changelog
 
 ## 9.3.5
 
