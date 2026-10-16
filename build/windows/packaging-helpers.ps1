@@ -121,3 +121,16 @@ function Save-VcRedist([string]$PackageDir, [string]$Arch) {
     }
     Write-Host "VCRedist staged: $((Get-Item $vcRedist).VersionInfo.ProductVersion)"
 }
+
+# Give the ZIP and Inno installer the release asset name shared with macOS:
+# <Company>-DesktopEditors-<version>-windows-<arch>. Returns the renamed files.
+function Rename-WindowsPackages([string]$PackageDir, [string]$CompanyName, [string]$Version, [string]$Arch) {
+    $base = ("{0}-DesktopEditors-{1}-windows-{2}" -f $CompanyName, $Version, $Arch) -replace '[^\w.-]', '-'
+    $files = @(Get-ChildItem (Join-Path $PackageDir 'zip\*.zip')) +
+             @(Get-ChildItem (Join-Path $PackageDir 'inno\*.exe') | Where-Object { $_.Name -notlike 'vc_redist.*' })
+    foreach ($f in $files) {
+        $target = Join-Path $f.DirectoryName "$base$($f.Extension)"
+        if ($f.FullName -ne $target) { Move-Item -Force $f.FullName $target }
+        Get-Item $target
+    }
+}

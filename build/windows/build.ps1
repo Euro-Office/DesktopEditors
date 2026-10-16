@@ -549,6 +549,8 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
             .\make_inno.ps1 -Version $VersionFull -Arch $Arch -Target $Target
             Assert-LastExit "make_inno.ps1"
 
+            Rename-WindowsPackages $PackageDir $CompanyName "$ProductVersion-$BuildNumber" $Arch | Out-Null
+
             if ($BuildMsi) {
                 Write-Step "11c. Build MSI (make_advinst.ps1)"
                 $aiRoot = (Get-Item "${env:ProgramFiles(x86)}\Caphyon\Advanced Installer*").FullName
