@@ -10,10 +10,11 @@ BUILD_NUMBER="dev.0"
 BRANDING_DIR="../"
 COMPANY_NAME="Euro-Office"
 PRODUCT_NAME="Desktop Editors"
-GIT_COMMIT=$(git rev-parse --short HEAD)
+BUILD_COMMITS="DesktopEditors=$(git rev-parse HEAD) $(git -C ../.. submodule foreach --quiet 'echo $name=$(git rev-parse HEAD)' | tr '\n' ' ')"
+BUILD_DATE=$(date -u +%F)
 
 export NEXTCLOUD_USER NEXTCLOUD_PASS REGISTRY TAG PRODUCT_VERSION \
-       BUILD_NUMBER BRANDING_DIR COMPANY_NAME PRODUCT_NAME GIT_COMMIT
+       BUILD_NUMBER BRANDING_DIR COMPANY_NAME PRODUCT_NAME BUILD_COMMITS BUILD_DATE
 
 docker buildx bake -f ../docker-bake.hcl -f docker-bake.hcl packages \
        --set "desktop-linux.contexts.desktop-common=target:desktop-common" \
