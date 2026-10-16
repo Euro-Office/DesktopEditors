@@ -88,8 +88,14 @@ jobs:
             echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
           else
             VERSION_FILE=$(cat VERSION.txt 2>/dev/null | tr -d '[:space:]')
-            echo "product_version=${VERSION_FILE}" >> $GITHUB_OUTPUT
-            echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
+            # Split like a tag: release PRs carry 9.3.6-rc.1 → version=9.3.6 build=0~rc.1
+            if [[ "${VERSION_FILE}" =~ ^([^-]+)-(.+)$ ]]; then
+              echo "product_version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+              echo "build_number=0~${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+            else
+              echo "product_version=${VERSION_FILE}" >> $GITHUB_OUTPUT
+              echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
+            fi
           fi
 
   # ─────────────────────────────────────────────────────────────
