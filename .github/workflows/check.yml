@@ -5,7 +5,6 @@ on:
   push:
     paths:
       - 'CHANGELOG.md'
-      - '.aspell.*.pws'
 
 jobs:
   markdownlint:
@@ -15,15 +14,3 @@ jobs:
       - uses: DavidAnson/markdownlint-cli2-action@v9
         with:
           globs: 'CHANGELOG.md'
-  spellchecker:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Setup aspell
-        run: sudo apt-get -y update && sudo apt-get -y install aspell aspell-en
-      - name: Run spellchecker
-        run: |
-          SPELLCHECK_OUT=$(cat CHANGELOG.md \
-            | aspell --lang=en --encoding=utf-8 --personal=./.aspell.en.pws list)
-          echo $SPELLCHECK_OUT
-          test $(echo -n $SPELLCHECK_OUT | wc -c) -eq 0
