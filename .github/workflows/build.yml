@@ -52,7 +52,6 @@ jobs:
     outputs:
       product_version:      ${{ steps.meta.outputs.product_version }}
       build_number:         ${{ steps.meta.outputs.build_number }}
-      build_number_numeric: ${{ steps.mac.outputs.build_number_numeric }}
       ref_name:             ${{ steps.meta.outputs.ref_name }}
       sha_short:            ${{ steps.meta.outputs.sha_short }}
     steps:
@@ -92,17 +91,6 @@ jobs:
             echo "product_version=${VERSION_FILE}" >> $GITHUB_OUTPUT
             echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
           fi
-
-      # No DocumentServer equivalent — DS has no macOS target. CFBundleVersion
-      # accepts only 1-3 dot-separated integers, so 'rc.1' is rejected.
-      - name: Derive numeric build number for Xcode
-        id: mac
-        run: |
-          BUILD_NUMBER="${{ steps.meta.outputs.build_number }}"
-          NUMERIC="$(printf '%s' "$BUILD_NUMBER" | tr -cd '0-9.' | sed 's/^\.*//; s/\.*$//')"
-          [ -n "$NUMERIC" ] || NUMERIC="${GITHUB_RUN_NUMBER}"
-          echo "build_number_numeric=${NUMERIC}" >> "$GITHUB_OUTPUT"
-
 
   # ─────────────────────────────────────────────────────────────
   # BUILD (common / Linux / Docker / WASM)
