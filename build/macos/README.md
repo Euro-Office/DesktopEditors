@@ -101,7 +101,7 @@ STAGE=/path/to/staging-root  # arbitrary, doesn't need to exist yet - step 1 cre
    ```bash
    "${REPO}/build/macos/make-dmg.sh" \
      --app "${REPO}/build/macos/out/Euro-Office.app" \
-     --output "${REPO}/build/macos/out/Euro-Office-macos-arm64.dmg"
+     --output "${REPO}/build/macos/out/Euro-Office-DesktopEditors-9.3.5-1-macos-arm64.dmg"
    ```
 
 ## What `stage.sh` does
