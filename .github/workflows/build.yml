@@ -928,18 +928,31 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          rows=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate \
-            --jq '.artifacts[] | select(.name | test("-packages-|-signing-bundle-")) | [.name, .id, .size_in_bytes] | @tsv' |
-            sort | while IFS=$'\t' read -r name id size; do
-              printf '| [%s](%s/artifacts/%s) | %s MB |\n' "$name" "$RUN_URL" "$id" "$((size / 1048576))"
-            done)
+          artifacts=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate \
+            --jq '.artifacts[] | [.name, .id, .size_in_bytes] | @tsv')
+          declare -A url size
+          while IFS=$'\t' read -r name id bytes; do
+            [ -n "$name" ] || continue
+            url[$name]="$RUN_URL/artifacts/$id"
+            size[$name]=$(awk -v b="$bytes" 'BEGIN { printf "%.1f GB", b / 1073741824 }')
+          done <<<"$artifacts"
+          cell() { if [ -n "${url[$1]:-}" ]; then echo "[${size[$1]}](${url[$1]})"; else echo "–"; fi; }
+
+          # One table per brand: a row per artifact kind, a column per arch.
           {
             echo "Test build for $SHA ([run]($RUN_URL), artifacts kept 7 days)"
-            echo
-            echo "| Artifact | Size |"
-            echo "|---|---|"
-            echo "${rows:-| none, see the run | |}"
+            for brand in "euro-office:Euro-Office" "nextcloud-office:Nextcloud Office"; do
+              rows=""
+              for kind in "linux-packages:Linux (.deb, .rpm, .tar.xz)" "windows-packages:Windows (.exe, .zip)" \
+                          "windows-signing-bundle:Windows signing bundle" "macos-packages:macOS (.dmg)"; do
+                amd64="${kind%%:*}-${brand%%:*}-amd64" arm64="${kind%%:*}-${brand%%:*}-arm64"
+                [ -n "${url[$amd64]:-}${url[$arm64]:-}" ] || continue
+                rows+="| ${kind#*:} | $(cell "$amd64") | $(cell "$arm64") |"$'\n'
+              done
+              [ -z "$rows" ] || printf '\n### %s\n\n| | amd64 | arm64 |\n|---|---|---|\n%s' "${brand#*:}" "$rows"
+            done
           } > comment.md
+          grep -q '^###' comment.md || printf '\nNo packages were uploaded, see the run.\n' >> comment.md
           gh pr comment "$PR" -R "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file comment.md
 
   # ─────────────────────────────────────────────────────────────
