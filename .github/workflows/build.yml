@@ -366,6 +366,7 @@ jobs:
           name: common-files-${{ matrix.brand.name }}
           path: ./build/common.tar
           compression-level: 0
+          retention-days: 1             # only consumed by the platform jobs of this run
 
   # ─────────────────────────────────────────────────────────────
   # 3RD-PARTY CROSS-COMPILE (brand independent)
@@ -552,6 +553,8 @@ jobs:
             desktop-apps/package/zip/*.zip
             desktop-apps/package/inno/*.exe
             desktop-apps/package/advinst/*.msi
+          # Kept longer on tags for the publish jobs and the manual signing.
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
 
       # Input for build/windows/sign-package.ps1 on the signing server, which
       # signs the binaries and builds + signs the ZIP and Inno installer.
@@ -561,6 +564,8 @@ jobs:
           name: windows-signing-bundle-${{ matrix.brand.name }}-${{ matrix.arch }}
           path: windows-signing-bundle.tar
           if-no-files-found: error
+          # Kept longer on tags for the publish jobs and the manual signing.
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
 
   # ─────────────────────────────────────────────────────────────
   # BUILD (Linux)
@@ -725,6 +730,8 @@ jobs:
             build/linux/deploy/packages/*.deb
             build/linux/deploy/packages/*.rpm
             build/linux/deploy/packages/*.tar.xz
+          # Kept longer on tags for the publish jobs and the manual signing.
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
 
   # ─────────────────────────────────────────────────────────────
   # BUILD (macOS)
@@ -898,6 +905,55 @@ jobs:
         with:
           name: macos-packages-${{ matrix.brand.name }}-arm64
           path: build/macos/out/${{ matrix.brand.dmg_name }}
+          # Kept longer on tags for the publish jobs and the manual signing.
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
+
+  # ─────────────────────────────────────────────────────────────
+  # Points release/v* PRs (opened by Euro-Office/release) to the test
+  # build's artifacts. Edits its previous comment on re-runs.
+  # ─────────────────────────────────────────────────────────────
+  pr-comment:
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows, build-macos]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') }}
+    permissions:
+      actions: read
+      pull-requests: write
+    steps:
+      - name: Comment with artifact links
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          artifacts=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" --paginate \
+            --jq '.artifacts[] | [.name, .id, .size_in_bytes] | @tsv')
+          declare -A url size
+          while IFS=$'\t' read -r name id bytes; do
+            [ -n "$name" ] || continue
+            url[$name]="$RUN_URL/artifacts/$id"
+            size[$name]=$(awk -v b="$bytes" 'BEGIN { printf "%.1f GB", b / 1073741824 }')
+          done <<<"$artifacts"
+          cell() { if [ -n "${url[$1]:-}" ]; then echo "[${size[$1]}](${url[$1]})"; else echo "–"; fi; }
+
+          # One table per brand: a row per artifact kind, a column per arch.
+          {
+            echo "Test build for $SHA ([run]($RUN_URL), artifacts kept 7 days)"
+            for brand in "euro-office:Euro-Office" "nextcloud-office:Nextcloud Office"; do
+              rows=""
+              for kind in "linux-packages:Linux (.deb, .rpm, .tar.xz)" "windows-packages:Windows (.exe, .zip)" \
+                          "windows-signing-bundle:Windows signing bundle" "macos-packages:macOS (.dmg)"; do
+                amd64="${kind%%:*}-${brand%%:*}-amd64" arm64="${kind%%:*}-${brand%%:*}-arm64"
+                [ -n "${url[$amd64]:-}${url[$arm64]:-}" ] || continue
+                rows+="| ${kind#*:} | $(cell "$amd64") | $(cell "$arm64") |"$'\n'
+              done
+              [ -z "$rows" ] || printf '\n### %s\n\n| | amd64 | arm64 |\n|---|---|---|\n%s' "${brand#*:}" "$rows"
+            done
+          } > comment.md
+          grep -q '^###' comment.md || printf '\nNo packages were uploaded, see the run.\n' >> comment.md
+          gh pr comment "$PR" -R "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file comment.md
 
   # ─────────────────────────────────────────────────────────────
   # Classify the tag: v9.3.4 is stable; anything else
