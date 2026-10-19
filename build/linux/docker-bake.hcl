@@ -152,3 +152,19 @@ target "packages" {
 
   cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/packages"]  # reuses builder cache
 }
+
+# ──────────────────────────────────────────────
+# APP-ONLY EXPORT TARGET (no packaging)
+# ──────────────────────────────────────────────
+
+### Exports only the runnable app tree (/desktopeditors) for local testing.
+### A tarball, because the local directory exporter can stall on the large
+### libcef.so; build.sh --no-package unpacks it to ./deploy/desktopeditors.
+target "desktop-app" {
+  dockerfile-inline = "FROM scratch\nCOPY --from=desktop-linux /desktopeditors /\n"
+  contexts = {
+    desktop-linux = "target:desktop-linux"
+  }
+
+  output = ["type=tar,dest=./deploy/desktopeditors.tar"]
+}

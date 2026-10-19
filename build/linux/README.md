@@ -79,6 +79,16 @@ cd build/linux
 ./build.sh
 ```
 
+For local testing you usually don't need the packages. `--no-package` builds only
+the app (the `desktop-app` bake target) and unpacks it to `build/linux/deploy/desktopeditors`,
+skipping the slow `.deb`/`.rpm`/`.tar.xz` step:
+
+```sh
+cd build/linux
+./build.sh --no-package
+cd deploy/desktopeditors && ./start_desktop.sh
+```
+
 ## How the desktop image is built
 
 The desktop stage (in the bake Dockerfile) follows the standard sequence:

@@ -2,3 +2,4 @@
 .vscode/
 build_output.log
 build/deploy/
+build/linux/deploy/
