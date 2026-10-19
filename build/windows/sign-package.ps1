@@ -228,13 +228,12 @@ try {
                 -Sign -SignArgs $SignArgs
             Assert-LastExit "make_inno.ps1"
 
-            $installers = @(Get-ChildItem 'inno\*.exe' | Where-Object { $_.Name -notlike 'vc_redist.*' })
-            Assert-Signed $installers
+            $packages = @(Rename-WindowsPackages $pkg $m.CompanyName "$($m.ProductVersion)-$($m.BuildNumber)" $m.Arch)
+            Assert-Signed @($packages | Where-Object Extension -eq '.exe')
 
-            # One folder per bundle: the file names don't carry the brand.
             $dest = Join-Path $OutDir (("{0}-{1}" -f $m.CompanyName, $m.Arch) -replace '[^\w.-]', '-')
             New-Item -ItemType Directory -Force -Path $dest | Out-Null
-            foreach ($f in @(Get-ChildItem 'zip\*.zip') + $installers) {
+            foreach ($f in $packages) {
                 Copy-Item $f.FullName $dest -Force
                 $outputs += Get-Item (Join-Path $dest $f.Name)
             }
