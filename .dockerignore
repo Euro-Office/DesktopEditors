@@ -5,3 +5,5 @@
 **/.git
 build/.docker-cache
 build/deploy
+build/linux/.docker-cache
+build/linux/deploy
