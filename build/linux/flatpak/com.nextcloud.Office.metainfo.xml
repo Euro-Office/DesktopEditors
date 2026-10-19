@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.nextcloud.Office</id>
+  <name>Nextcloud Office</name>
+  <summary>Edit documents, spreadsheets, presentations and PDFs</summary>
+  <developer id="com.nextcloud">
+    <name>Nextcloud GmbH</name>
+  </developer>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-only</project_license>
+
+  <description>
+    <p>
+      Nextcloud Office is a free office suite with editors for text documents,
+      spreadsheets, presentations, PDFs and PDF forms, plus a diagram viewer.
+      It works offline with files on your computer and is fully compatible with
+      Office Open XML (.docx, .xlsx, .pptx) and OpenDocument formats.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Document, spreadsheet and presentation editors</li>
+      <li>PDF editor and form creator</li>
+      <li>Connect to Nextcloud and other clouds for real-time collaboration</li>
+      <li>Digital signatures and password protection</li>
+      <li>Plugins and AI-powered assistants</li>
+      <li>Interface in more than 40 languages, with right-to-left support</li>
+      <li>Light and dark themes and scalable UI</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">com.nextcloud.Office.desktop</launchable>
+
+  <url type="homepage">https://nextcloud.com/office/</url>
+  <url type="bugtracker">https://github.com/Euro-Office/DesktopEditors/issues</url>
+  <url type="vcs-browser">https://github.com/Euro-Office/DesktopEditors</url>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#82c4e9</color>
+    <color type="primary" scheme_preference="dark">#00679e</color>
+  </branding>
+
+  <!-- TODO: replace with Nextcloud Office screenshots committed to the Flathub repo. -->
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/flathub/com.nextcloud.Office/master/screenshots/start.png</image>
+      <caption>Start screen with recent files</caption>
+    </screenshot>
+  </screenshots>
+
+  <content_rating type="oars-1.1"/>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+
+  <releases>
+    <release version="9.3.5" date="2026-10-12">
+      <url type="details">https://github.com/Euro-Office/DesktopEditors/blob/main/CHANGELOG.md</url>
+      <description>
+        <p>New features:</p>
+        <ul>
+          <li>Added Danish language support</li>
+          <li>Updated Ukrainian and Estonian translations</li>
+        </ul>
+        <p>Fixes:</p>
+        <ul>
+          <li>Application name shown correctly in file metadata</li>
+          <li>Background color preserved in ODT files</li>
+          <li>Currency symbols kept when saving and reopening ODS files</li>
+          <li>Annotation timestamps no longer corrupted when saving a PDF</li>
+          <li>TLS certificate verification for file transfers</li>
+          <li>Wayland: correct dialog sizes, DPI scaling and popup menus</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+</component>
