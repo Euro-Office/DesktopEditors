@@ -57,6 +57,19 @@ variable "PRODUCT_NAME" {
   default = "Desktop Editors"
 }
 
+# Maintainer/Vendor written into the .deb/.rpm metadata.
+variable "PUBLISHER_NAME" {
+  default = "Euro-Office"
+}
+
+variable "PUBLISHER_URL" {
+  default = "https://github.com/Euro-Office/DesktopEditors"
+}
+
+variable "SUPPORT_MAIL" {
+  default = ""
+}
+
 # ──────────────────────────────────────────────
 # BUILD GROUPS
 # ──────────────────────────────────────────────
@@ -142,6 +155,13 @@ target "packages" {
   dockerfile = "./build/.docker/packages.bake.Dockerfile"
   target     = "packages"       # points to the FROM scratch stage
   tags       = ["${REGISTRY}/packages:${TAG}"]
+  # Only the packaging step reads these, so they stay out of _common and
+  # don't invalidate the compile targets' cache.
+  args = {
+    PUBLISHER_NAME = "${PUBLISHER_NAME}"
+    PUBLISHER_URL  = "${PUBLISHER_URL}"
+    SUPPORT_MAIL   = "${SUPPORT_MAIL}"
+  }
   contexts = {
     desktop-linux = "target:desktop-linux"
     brand-icons   = "target:brand-icons"

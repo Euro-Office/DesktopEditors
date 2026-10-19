@@ -14,6 +14,11 @@ FROM ubuntu:24.04 AS package
     ARG COMPANY_NAME
     ARG COMPANY_NAME_LOW
     ARG PRODUCT_NAME
+    # Maintainer/Vendor of the .deb/.rpm. Defaults mirror desktop-apps/package/Makefile;
+    # an empty ENV would override its ?= defaults, so these must not be blank.
+    ARG PUBLISHER_NAME="Euro-Office"
+    ARG PUBLISHER_URL="https://github.com/Euro-Office/DesktopEditors"
+    ARG SUPPORT_MAIL=""
     ARG BRANDING_DIR
     ARG PRODUCT_VERSION
     ARG BUILD_NUMBER=0
@@ -24,6 +29,9 @@ FROM ubuntu:24.04 AS package
     ENV PRODUCT_VERSION=${PRODUCT_VERSION}
     ENV COMPANY_NAME=${COMPANY_NAME}
     ENV PRODUCT_NAME=${PRODUCT_NAME}
+    ENV PUBLISHER_NAME=${PUBLISHER_NAME}
+    ENV PUBLISHER_URL=${PUBLISHER_URL}
+    ENV SUPPORT_MAIL=${SUPPORT_MAIL}
     ENV BUILD_NUMBER=${BUILD_NUMBER}
     ENV OUT_BASE=${OUT_BASE}
     ENV BUNDLE_BASE=${BUNDLE_BASE}

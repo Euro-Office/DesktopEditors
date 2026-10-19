@@ -592,6 +592,8 @@ jobs:
           - name: euro-office
             company_name: Euro-Office
             product_name: Euro-Office
+            publisher_name: Euro-Office
+            publisher_url: https://github.com/Euro-Office/DesktopEditors
             branding_dir: "."
             extra_bake_files_linux: ""
             extra_targets_linux: ""
@@ -599,6 +601,9 @@ jobs:
           - name: nextcloud-office
             company_name: Nextcloud Office
             product_name: Nextcloud Office
+            # Same publisher as the Windows installer (brand config/branding.iss).
+            publisher_name: Nextcloud GmbH
+            publisher_url: https://nextcloud.com/
             # Bake context for ./build/linux targets is `../..` = repo root,
             # so this is the same string as in build-common.
             branding_dir: "./build/brands/nextcloud-office-brand"
@@ -719,6 +724,8 @@ jobs:
           BRANDING_DIR: ${{ matrix.brand.branding_dir }}
           COMPANY_NAME: ${{ matrix.brand.company_name }}
           PRODUCT_NAME: ${{ matrix.brand.product_name }}
+          PUBLISHER_NAME: ${{ matrix.brand.publisher_name }}
+          PUBLISHER_URL: ${{ matrix.brand.publisher_url }}
           # ------------------
           NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
           NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
