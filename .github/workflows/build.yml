@@ -117,6 +117,7 @@ jobs:
   # serve all three platforms.
   # ─────────────────────────────────────────────────────────────
   brand-assets:
+    name: brand-assets (${{ matrix.brand.name }})
     runs-on: ubuntu-latest
     needs: version
     permissions:
@@ -210,6 +211,7 @@ jobs:
           retention-days: 7
 
   build-common:
+    name: build-common (${{ matrix.brand.name }})
     runs-on: 'ubuntu-latest'
     needs: [version, brand-assets]
     permissions:
@@ -433,6 +435,7 @@ jobs:
   # the bottom of the accompanying summary.
   # ─────────────────────────────────────────────────────────────
   build-windows:
+    name: build-windows (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
     needs: [version, build-common, crosscompile-3rdparty-arm64, brand-assets]
     strategy:
@@ -577,6 +580,7 @@ jobs:
   # the .deb/.rpm names.
   # ─────────────────────────────────────────────────────────────
   build-linux:
+    name: build-linux (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     needs: [version, build-common, brand-assets]
     permissions:
@@ -759,6 +763,7 @@ jobs:
   # just done locally here instead of through the shared brand-assets job).
   # ─────────────────────────────────────────────────────────────
   build-macos:
+    name: build-macos (${{ matrix.brand.name }})
     # NOTE: confirm this is still GitHub's current Apple Silicon runner
     # label before relying on it - these change over time.
     runs-on: macos-14
