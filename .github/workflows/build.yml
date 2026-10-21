@@ -1002,13 +1002,34 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - run: find dist -type f -printf '%p  %s bytes\n' | sort
-
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          files: dist/**/*
-          prerelease: ${{ needs.release-info.outputs.stable != 'true' }}
-          fail_on_unmatched_files: true
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+          path: src
+          persist-credentials: false
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TITLE: Euro-Office Desktop Editors ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PRERELEASE: ${{ needs.release-info.outputs.stable != 'true' }}
+          LATEST: ${{ needs.release-info.outputs.stable == 'true' }}
+        run: |
+          set -euo pipefail
+          # The CHANGELOG.md section of this tag, written by Euro-Office/release.
+          awk -v h="## $GITHUB_REF_NAME" '$0 == h { f = 1; next } f && /^## / { exit } f' src/CHANGELOG.md > notes.md
+          printf '\nBuilt from %s@%s, %s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$RUN_URL" >> notes.md
+          flags=(--title "$TITLE" --notes-file notes.md --prerelease="$PRERELEASE" --latest="$LATEST")
+          # Re-runs update the existing release and replace its assets.
+          if gh release view "$GITHUB_REF_NAME" -R "$REPO" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}"
+            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber dist/*
+          else
+            gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" dist/*
+          fi
 
   # ─────────────────────────────────────────────────────────────
   # PUBLISH - nextcloud-office to nextcloud-releases/Office-DesktopEditors
@@ -1031,20 +1052,37 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - run: find dist -type f -printf '%p  %s bytes\n' | sort
-
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: nextcloud-releases/Office-DesktopEditors
-          token: ${{ secrets.NEXTCLOUD_RELEASES_TOKEN }}
-          tag_name: ${{ github.ref_name }}
-          name: Nextcloud Office Desktop ${{ github.ref_name }}
-          body: |
-            Built from ${{ github.repository }}@${{ github.sha }}
-            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          prerelease: ${{ needs.release-info.outputs.stable != 'true' }}
-          files: dist/**/*
-          fail_on_unmatched_files: true
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+          path: src
+          persist-credentials: false
+
+      # The tag does not exist in the releases repo; gh creates it on its
+      # default branch. Signed Windows/macOS assets are added by hand later
+      # and are kept on re-runs, only same-named files are replaced.
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.NEXTCLOUD_RELEASES_TOKEN }}
+          REPO: nextcloud-releases/Office-DesktopEditors
+          TITLE: Nextcloud Office Desktop ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PRERELEASE: ${{ needs.release-info.outputs.stable != 'true' }}
+          LATEST: ${{ needs.release-info.outputs.stable == 'true' }}
+        run: |
+          set -euo pipefail
+          # The CHANGELOG.md section of this tag, written by Euro-Office/release.
+          awk -v h="## $GITHUB_REF_NAME" '$0 == h { f = 1; next } f && /^## / { exit } f' src/CHANGELOG.md > notes.md
+          printf '\nBuilt from %s@%s, %s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$RUN_URL" >> notes.md
+          flags=(--title "$TITLE" --notes-file notes.md --prerelease="$PRERELEASE" --latest="$LATEST")
+          # Re-runs update the existing release and replace its assets.
+          if gh release view "$GITHUB_REF_NAME" -R "$REPO" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}"
+            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber dist/*
+          else
+            gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" dist/*
+          fi
 
   # ─────────────────────────────────────────────────────────────
   # PUBLISH - nextcloud-office to the versioned directory on the server
