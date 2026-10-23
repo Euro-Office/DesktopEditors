@@ -8,7 +8,8 @@ FROM scratch AS desktop-common
     ARG BUILD_ROOT
 
     COPY --from=sdkjs-desktop ${BUILD_ROOT} /editors/
-    COPY --from=web-apps ${BUILD_ROOT} /editors/
+    # Desktop only loads the main editors, never the mobile ones
+    COPY --from=web-apps --exclude=web-apps/apps/*/mobile ${BUILD_ROOT} /editors/
 
     COPY --from=desktop-js /app/loginpage/deploy/index.html /index.html
     COPY --from=desktop-js /app/loginpage/deploy/noconnect.html /editors/webext/noconnect.html
