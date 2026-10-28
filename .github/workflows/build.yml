@@ -74,22 +74,30 @@ jobs:
           # Supported formats:
           #   v9.3.1-rc.1  → product_version=9.3.1  build_number=0~rc.1
           #   v9.3.1       → product_version=9.3.1  build_number=0
+          #   v9.3.1-1     → product_version=9.3.1  build_number=1
           # The "0~" prefix sorts a prerelease before the final release
-          # (9.3.1-0~rc.1 < 9.3.1-0) in both dpkg and rpm.
+          # (9.3.1-0~rc.1 < 9.3.1-0) in both dpkg and rpm; a patch build
+          # sorts after it (9.3.1-0 < 9.3.1-1).
           # Fall back to the VERSION file for non-tag builds.
-          if [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([^-]+)-(.+)$ ]]; then
+          if [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-([1-9][0-9]*)$ ]]; then
+            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+            echo "build_number=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
+          elif [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([^-]+)-(.+)$ ]]; then
             echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
             echo "build_number=0~${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
           elif [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
             echo "build_number=0" >> $GITHUB_OUTPUT
-          elif [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v(.+)$ ]]; then
-            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
+          elif [[ "$IS_TAG" == "true" ]]; then
+            echo "::error::Unsupported tag format: $GITHUB_REF_NAME (expected vX.Y.Z or vX.Y.Z-ID)"
+            exit 1
           else
             VERSION_FILE=$(cat VERSION.txt 2>/dev/null | tr -d '[:space:]')
             # Split like a tag: release PRs carry 9.3.6-rc.1 → version=9.3.6 build=0~rc.1
-            if [[ "${VERSION_FILE}" =~ ^([^-]+)-(.+)$ ]]; then
+            if [[ "${VERSION_FILE}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-([1-9][0-9]*)$ ]]; then
+              echo "product_version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+              echo "build_number=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+            elif [[ "${VERSION_FILE}" =~ ^([^-]+)-(.+)$ ]]; then
               echo "product_version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
               echo "build_number=0~${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
             else
@@ -969,8 +977,8 @@ jobs:
           gh pr comment "$PR" -R "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file comment.md
 
   # ─────────────────────────────────────────────────────────────
-  # Classify the tag: v9.3.4 is stable; anything else
-  # (v9.3.4-beta.1, v9.3.4-rc.1, v9.3.1-dev.1, ...) is a prerelease.
+  # Classify the tag: v9.3.4 and its patch builds (v9.3.4-1) are stable;
+  # anything else (v9.3.4-beta.1, v9.3.4-rc.1, ...) is a prerelease.
   # ─────────────────────────────────────────────────────────────
   release-info:
     runs-on: ubuntu-latest
@@ -980,7 +988,7 @@ jobs:
     steps:
       - id: check
         run: |
-          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[1-9][0-9]*)?$ ]]; then
             echo "stable=true" >> "$GITHUB_OUTPUT"
           else
             echo "stable=false" >> "$GITHUB_OUTPUT"
