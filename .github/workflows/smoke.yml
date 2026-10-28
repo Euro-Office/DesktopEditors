@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 Euro-Office contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Smoke tests
+
+# Installs the Linux .deb of every successful main build on a clean Ubuntu
+# and runs tests/smoke against it: start, create, open, edit, save, quit.
+on:
+  workflow_run:
+    workflows: ["Build (Windows/Linux/macOS)"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run-id:
+        description: ID of a successful "Build (Windows/Linux/macOS)" run whose package to test
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: smoke-${{ github.event.workflow_run.id || inputs.run-id }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      # The tests from the commit that was built
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          sparse-checkout: tests/smoke
+          submodules: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-packages-euro-office-amd64
+          run-id: ${{ github.event.workflow_run.id || inputs.run-id }}
+          github-token: ${{ github.token }}
+          path: packages
+
+      - name: Smoke tests
+        run: |
+          # the app package; the help package is *_all.deb
+          deb=$(ls packages/*_amd64.deb)
+          echo "Testing $deb"
+          tests/smoke/run.sh "$deb" results
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-results
+          path: results
+          if-no-files-found: ignore
