@@ -19,14 +19,22 @@ onto a built `desktop-sdk` tree and generating fonts/theme thumbnails. It does
 - The submodules checked out (see the [overview](../README.md#prerequisites-all-platforms)),
   including `core-fonts`.
 - Docker, for building the [common payload](../README.md#the-common-payload-again)
-  locally. Use `type=tar`, not the default `type=local` — `type=local` is known
-  to hang indefinitely on Docker Desktop's macOS/virtiofs backend for this many
-  small files (confirmed stuck, not just slow), and `type=tar` is also what CI
-  already uses:
+  locally. Run it from inside `build/` — that's where `docker-bake.hcl` lives
+  (there is no bake file at the repo root, and the output paths below are
+  relative to `build/`). Use `type=tar`, not the default `type=local` —
+  `type=local` is known to hang indefinitely on Docker Desktop's macOS/virtiofs
+  backend for this many small files (confirmed stuck, not just slow), and
+  `type=tar` is also what CI already uses:
   ```bash
-  docker buildx bake desktop-common --set desktop-common.output=type=tar,dest=./build/deploy/common.tar
-  mkdir -p build/deploy/common && tar -xf build/deploy/common.tar -C build/deploy/common
+  cd build
+  docker buildx bake -f ./docker-bake.hcl desktop-common \
+    --set desktop-common.output=type=tar,dest=./deploy/common.tar
+  rm -rf deploy/common && mkdir -p deploy/common && tar -xf deploy/common.tar -C deploy/common
+  cd ..
   ```
+  The build runs several webpack builds in parallel, so give Docker Desktop
+  plenty of memory (Settings → Resources; the default can be too low — it
+  failed with out-of-memory kills at ~7.7 GiB, 12 GiB or more is safer).
 
 ## The steps
 
@@ -57,7 +65,26 @@ STAGE=/path/to/staging-root  # arbitrary, doesn't need to exist yet - step 1 cre
    expect this to take a while and need several GB free. Confirm it worked:
    `${STAGE}/ascdocumentscore.framework`, `${STAGE}/ooxmlsignature.framework`,
    `${STAGE}/editors_helper.app` (+ GPU/Renderer variants), and
-   `${STAGE}/converter/x2t` should all exist.
+   `${STAGE}/converter/x2t` should all exist. If they do, skip the box below.
+
+   <details>
+   <summary><b>Troubleshooting only:</b> <code>${STAGE}</code> is empty or missing after the build
+   (<code>ninja: no work to do</code>, or <code>stage.sh</code> says <code>converter/x2t not found</code>)</summary>
+
+   Not part of the normal flow. `${STAGE}` is filled by each target's
+   post-build copy, so it is only (re)populated when the targets actually
+   relink. If you deleted `${STAGE}` (or pointed `EO_CORE_OUTPUT_DIR`
+   somewhere new) but kept `build-mac-sdk`, Ninja considers everything up to
+   date and copies nothing. Force it by deleting `build-mac-sdk` too (full
+   rebuild), or delete just the link products so Ninja relinks them (no
+   recompiling) and re-runs the copies:
+   ```bash
+   find build-mac-sdk \( -path build-mac-sdk/vcpkg_installed -o -name CMakeFiles \) -prune -o \
+     \( \( -type d -name '*.framework' -prune \) -o \( -type f \( -name '*.dylib' -o -name x2t -o -name editors_helper \) \) \) \
+     -exec rm -rf {} +
+   cmake --build build-mac-sdk
+   ```
+   </details>
 2. **Stage it** — this is what `stage.sh` automates:
    ```bash
    "${REPO}/build/macos/stage.sh" \
@@ -106,8 +133,8 @@ STAGE=/path/to/staging-root  # arbitrary, doesn't need to exist yet - step 1 cre
 
 ## What `stage.sh` does
 
-In order: merge the CMake build's `package/` output into `converter/` → merge
-the web payload (`index.html`, `editors/`, `fonts/`, `providers/`, plus
+In order: check that `converter/x2t` exists (the native build output already
+lands in `converter/`, there is nothing to merge) → merge the web payload (`index.html`, `editors/`, `fonts/`, `providers/`, plus
 `converter/`'s extra config/locale files) → build `allfontsgen`/`allthemesgen`
 standalone (they're not part of the `desktop-sdk` build; rebuilt fresh every
 run, ~1-2 minutes, so they're always current against whatever native code
@@ -133,5 +160,5 @@ Windows' fuller flag set.
 - **Safe to re-run.** Each run fully replaces `editors/`, `fonts/`, and
   `providers/` from the payload dir and regenerates the font/theme data from
   scratch, so stale content from a previous run doesn't linger.
-- **`--stage-dir` must already have a built `package/`.** The script fails
+- **`--stage-dir` must already have a built `converter/x2t`.** The script fails
   fast with a clear message if it doesn't, rather than staging a broken tree.
