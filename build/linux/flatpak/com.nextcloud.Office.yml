@@ -1,0 +1,114 @@
+app-id: com.nextcloud.Office
+# CEF needs NSS, libsecret, libnotify etc., which the Electron BaseApp provides.
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: nextcloud-office
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  # Open/save go through the FileChooser portal (forced in nextcloud-office.sh);
+  # these grant direct access for recent files and the start screen.
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+
+modules:
+  # The bundled Qt links libgssapi_krb5.so.2, which the runtime lacks.
+  - name: krb5
+    subdir: src
+    build-options:
+      # krb5 1.22 is not C23-clean (GCC 16 default), and its -Werror set trips
+      # over glibc's const-preserving strchr. A set WARN_CFLAGS skips that set.
+      cflags: -std=gnu17
+      env:
+        WARN_CFLAGS: -Wall
+    config-opts:
+      - --disable-static
+      - --disable-rpath
+      - --without-ldap
+      - --without-keyutils
+    cleanup:
+      - /bin
+      - /sbin
+      - /include
+      - /lib/pkgconfig
+      - /share
+      - /var
+      - /lib/krb5/plugins/kdb
+    sources:
+      - type: archive
+        url: https://kerberos.org/dist/krb5/1.22/krb5-1.22.2.tar.gz
+        sha256: 3243ffbc8ea4d4ac22ddc7dd2a1dc54c57874c40648b60ff97009763554eaf13
+        x-checker-data:
+          type: html
+          url: https://kerberos.org/dist/
+          version-pattern: Kerberos V5 Release ([\d.]+) - current release
+          url-template: https://kerberos.org/dist/krb5/$major.$minor/krb5-$version.tar.gz
+
+  - name: nextcloud-office
+    buildsystem: simple
+    build-commands:
+      # The upstream .deb is the only Linux archive on the release page.
+      - ar x nextcloud-office.deb data.tar.xz
+      - tar -xf data.tar.xz ./opt ./usr
+
+      - mv opt/nextcloud-office/nextcloudoffice /app/nextcloud-office
+      # Qt SDK leftovers that the deb ships but the app never loads.
+      - cd /app/nextcloud-office && rm -rf cmake pkgconfig objects-RelWithDebInfo qmllint qmlls start_desktop.sh
+      # Read by AppOptions::packageType(); the misspelling is upstream's.
+      - echo 'package = flatpack' > /app/nextcloud-office/converter/package.config
+
+      - install -Dm755 nextcloud-office.sh /app/bin/nextcloud-office
+
+      - install -Dm644 usr/share/applications/nextcloud-office-nextcloudoffice.desktop
+        /app/share/applications/com.nextcloud.Office.desktop
+      - sed -i
+        -e 's|^Exec=/usr/bin/nextcloud-office-nextcloudoffice|Exec=nextcloud-office|'
+        -e 's|^Icon=.*|Icon=com.nextcloud.Office|'
+        /app/share/applications/com.nextcloud.Office.desktop
+
+      - for size in 16 24 32 48 64 128 256; do
+          install -Dm644 usr/share/icons/hicolor/${size}x${size}/apps/nextcloud-office-nextcloudoffice.png
+            /app/share/icons/hicolor/${size}x${size}/apps/com.nextcloud.Office.png;
+        done
+
+      - install -Dm644 com.nextcloud.Office.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 usr/share/licenses/nextcloud-office-nextcloudoffice/* -t /app/share/licenses/com.nextcloud.Office
+
+    sources:
+      - type: file
+        dest-filename: nextcloud-office.deb
+        only-arches: [x86_64]
+        url: https://github.com/nextcloud-releases/Office-DesktopEditors/releases/download/v9.3.5-2/nextcloud-office-nextcloudoffice_9.3.5_x86_64.deb
+        sha256: 58c84de31e4bfbc24c1753ab1831926fd38de4a8c544d8393dd9a726c3f8824b
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/nextcloud-releases/Office-DesktopEditors/releases/latest
+          version-query: .name | ltrimstr("v")
+          url-query: '[.assets[] | select(.name | test("^nextcloud-office-nextcloudoffice_.*x86_64\\.deb$"))][0].browser_download_url'
+          is-main-source: true
+
+      - type: file
+        dest-filename: nextcloud-office.deb
+        only-arches: [aarch64]
+        url: https://github.com/nextcloud-releases/Office-DesktopEditors/releases/download/v9.3.5-2/nextcloud-office-nextcloudoffice_9.3.5.aarch64.deb
+        sha256: 1f55d125043a0dedd4199b9504c46cc4abe42e9bfeb15bf4906d0400f3e8cc7c
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/nextcloud-releases/Office-DesktopEditors/releases/latest
+          version-query: .name | ltrimstr("v")
+          url-query: '[.assets[] | select(.name | test("^nextcloud-office-nextcloudoffice_.*aarch64\\.deb$"))][0].browser_download_url'
+
+      - type: file
+        path: nextcloud-office.sh
+
+      - type: file
+        path: com.nextcloud.Office.metainfo.xml
