@@ -774,7 +774,7 @@ jobs:
     name: build-macos (${{ matrix.brand.name }})
     # NOTE: confirm this is still GitHub's current Apple Silicon runner
     # label before relying on it - these change over time.
-    runs-on: macos-14
+    runs-on: macos-15
     needs: [version, build-common]
     strategy:
       fail-fast: false
