@@ -379,62 +379,6 @@ jobs:
           retention-days: 1             # only consumed by the platform jobs of this run
 
   # ─────────────────────────────────────────────────────────────
-  # 3RD-PARTY CROSS-COMPILE (brand independent)
-  #
-  # V8/OpenSSL for Windows arm64 contain no branding, so this job
-  # deliberately stays outside the brand matrix and is shared.
-  # ─────────────────────────────────────────────────────────────
-  crosscompile-3rdparty-arm64:
-    runs-on: windows-2022 # x64 host that cross-compiles to arm64
-    env:
-      PYTHONUTF8: "1"
-      DEPOT_TOOLS_WIN_TOOLCHAIN: "0" # V8: use the locally installed VS, not Google's toolchain
-      NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }} # required: ensure_dep uploads here
-      NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
-    steps:
-      - name: Checkout fork repository (with submodules)
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          path: .
-          submodules: recursive
-          token: ${{ secrets.EURO_OFFICE_MIRROR_TOKEN }}
-
-      # windows-2022 ships VS2022 but not always the ARM64 *target* tools.
-      # clang-cl (V8) links arm64 against the arm64 Windows SDK libs;
-      # cl.exe (OpenSSL) needs the amd64_arm64 toolset. Add both.
-      - name: Add ARM64 build tools to Visual Studio
-        shell: pwsh
-        run: |
-          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-          $installPath = & $vsWhere -latest -products * -property installationPath
-          & $vsInstaller modify `
-            --installPath $installPath `
-            --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 `
-            --add Microsoft.VisualStudio.Component.VC.ATL.ARM64 `
-            --add Microsoft.VisualStudio.Component.VC.MFC.ARM64 `
-            --quiet --norestart --force
-          if ($LASTEXITCODE -notin @(0, 3010)) {
-            Write-Warning "vs_installer returned $LASTEXITCODE - components may already be present, continuing."
-          }
-
-      # Sets the amd64_arm64 cross environment for all later steps, incl.
-      # VSCMD_ARG_TGT_ARCH=arm64 -- the single signal openssl, v8 and the
-      # cache tag all key off of.
-      - name: Set up arm64 cross MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64_arm64
-
-      - name: Cross-compile arm64 third-party (V8, OpenSSL)
-        shell: pwsh
-        run: |
-          python ${{ github.workspace }}\core\Common\3dParty\build_3rdparty.py `
-            --only=v8,openssl `
-            "${{ github.workspace }}\workdir" `
-            "${{ github.workspace }}\installdir"
-
-  # ─────────────────────────────────────────────────────────────
   # BUILD (Windows)
   #
   # arch × brand. build.ps1 takes -CompanyName / -ProductName; it has
@@ -445,7 +389,7 @@ jobs:
   build-windows:
     name: build-windows (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
-    needs: [version, build-common, crosscompile-3rdparty-arm64, brand-assets]
+    needs: [version, build-common, brand-assets]
     strategy:
       fail-fast: false
       matrix:
@@ -509,6 +453,26 @@ jobs:
             git
             python3
             python3-devel
+
+      # The arm64 image only has Visual Studio 2026, but V8's build supports
+      # Visual Studio up to 2022 (and everything is built with its v143
+      # toolset). build.ps1 picks Visual Studio 2022.
+      - name: Install Visual Studio 2022 Build Tools (arm64)
+        if: matrix.arch == 'arm64'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://aka.ms/vs/17/release/vs_buildtools.exe -OutFile "$env:RUNNER_TEMP\vs_buildtools.exe"
+          $p = Start-Process -Wait -PassThru -FilePath "$env:RUNNER_TEMP\vs_buildtools.exe" -ArgumentList @(
+            '--quiet', '--wait', '--norestart', '--nocache',
+            '--add', 'Microsoft.VisualStudio.Workload.VCTools',
+            '--add', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+            '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64',
+            '--add', 'Microsoft.VisualStudio.Component.VC.ATL.ARM64',
+            '--add', 'Microsoft.VisualStudio.Component.VC.MFC.ARM64',
+            '--add', 'Microsoft.VisualStudio.Component.Windows11SDK.22621',
+            '--add', 'Microsoft.VisualStudio.Component.VC.Llvm.Clang',
+            '--includeRecommended')
+          if ($p.ExitCode -notin @(0, 3010)) { throw "vs_buildtools returned $($p.ExitCode)" }
 
       - name: Install aqtinstall
         shell: pwsh
@@ -772,9 +736,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   build-macos:
     name: build-macos (${{ matrix.brand.name }})
-    # NOTE: confirm this is still GitHub's current Apple Silicon runner
-    # label before relying on it - these change over time.
-    runs-on: macos-14
+    # V8 needs Xcode 16's SDK
+    runs-on: macos-15
     needs: [version, build-common]
     strategy:
       fail-fast: false
@@ -839,8 +802,15 @@ jobs:
           mkdir -p build/deploy/common
           tar -xf common.tar -C build/deploy/common
 
+      # The third-party build scripts need Python >= 3.11 (depot_tools for V8)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # V8 is built with Homebrew's LLVM and lld against Xcode's SDK
       - name: Install Homebrew build prerequisites
-        run: brew install ninja autoconf automake libtool pkg-config ccache
+        run: brew install ninja autoconf automake libtool pkg-config ccache llvm lld
 
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11 # same action build-windows uses; exports VCPKG_ROOT
