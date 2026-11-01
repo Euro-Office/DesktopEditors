@@ -84,7 +84,7 @@ param(
     [string]$Target         = 'standalone',
     [string]$CompanyName    = 'Euro-Office',
     [string]$ProductName    = 'DesktopEditors',
-    [string]$WinSdkVersion  = '10.0.19041.0',
+    [string]$WinSdkVersion  = '10.0.22621.0',   # CEF 156 needs >= 10.0.20348 (NTDDI_WIN10_FE)
     [string]$VcToolsVersion = '',   # e.g. 14.44 = VS 2022 toolset; empty = newest installed
 
     # Tool locations / install knobs.
