@@ -1,5 +1,100 @@
 # Changelog
 
+## v9.3.8-rc.1
+
+### Features
+
+* desktop-apps: add OpenCloud connection provider by palchrb in [desktop-apps#42](https://github.com/Euro-Office/desktop-apps/pull/42)
+* core: Android build by rikled in [core#182](https://github.com/Euro-Office/core/pull/182)
+* core: Move the third-party remote cache to S3 (eo-build-assets) by rikled in [core#178](https://github.com/Euro-Office/core/pull/178)
+* sdkjs: word: add selection statistics API by martivilella in [sdkjs#98](https://github.com/Euro-Office/sdkjs/pull/98)
+* web-apps: documenteditor: show selection counts in the word count popup by martivilella in [web-apps#289](https://github.com/Euro-Office/web-apps/pull/289)
+
+### Bug fixes
+
+* DesktopEditors: ci: authenticate Inno language listing on Windows by juliusknorr in [DesktopEditors#187](https://github.com/Euro-Office/DesktopEditors/pull/187)
+* desktop-apps: Build amd64 desktop on Rocky Linux 9 (fixes Euro-Office/DesktopEditors#122) by rikled in [desktop-apps#72](https://github.com/Euro-Office/desktop-apps/pull/72)
+* desktop-apps: debian: add missing dependancies by ohvinx in [desktop-apps#86](https://github.com/Euro-Office/desktop-apps/pull/86)
+* desktop-apps: follow the system display language when no language is set by bargib in [desktop-apps#83](https://github.com/Euro-Office/desktop-apps/pull/83)
+* desktop-apps: linux: missing icons at recent files feature of startpage by alexanderwwagner in [desktop-apps#85](https://github.com/Euro-Office/desktop-apps/pull/85)
+* desktop-apps: Show Catalan in its native name in the language list by atmarc in [desktop-apps#81](https://github.com/Euro-Office/desktop-apps/pull/81)
+* desktop-apps: settings: stop showing the NEW badge on the AI setting by bargib in [desktop-apps#54](https://github.com/Euro-Office/desktop-apps/pull/54)
+* desktop-apps: win: use own ProgIDs so ONLYOFFICE stays in "Open with" by rikled in [desktop-apps#100](https://github.com/Euro-Office/desktop-apps/pull/100)
+* desktop-apps: linux: stop packaging offline help by default by rikled in [desktop-apps#99](https://github.com/Euro-Office/desktop-apps/pull/99)
+* desktop-apps: inno: associate template file types by rikled in [desktop-apps#98](https://github.com/Euro-Office/desktop-apps/pull/98)
+* desktop-apps: inno: don't abort setup on stale Windows Installer data by rikled in [desktop-apps#97](https://github.com/Euro-Office/desktop-apps/pull/97)
+* desktop-sdk: crash when playing embedded videos (Qt6) by rikled in [desktop-sdk#21](https://github.com/Euro-Office/desktop-sdk/pull/21)
+* desktop-sdk: wayland: blank presentation tab after leaving slideshow by rikled in [desktop-sdk#22](https://github.com/Euro-Office/desktop-sdk/pull/22)
+* desktop-sdk: drop zlib addon flag removed from core by rikled in [desktop-sdk#25](https://github.com/Euro-Office/desktop-sdk/pull/25)
+* desktop-sdk: wayland: paste from system clipboard in login windows by rikled in [desktop-sdk#23](https://github.com/Euro-Office/desktop-sdk/pull/23)
+* core: Build amd64 desktop on Rocky Linux 9 (fixes Euro-Office/DesktopEditors#122) by rikled in [core#165](https://github.com/Euro-Office/core/pull/165)
+* core: make zlib a 3rdparty dep by Aiiaiiio in [core#183](https://github.com/Euro-Office/core/pull/183)
+* core: boost: name the MSVC toolset for bootstrap on Visual Studio 2026 by rikled in [core#185](https://github.com/Euro-Office/core/pull/185)
+* core: minizip: disable libbsd for the WASM build by rikled in [core#188](https://github.com/Euro-Office/core/pull/188)
+* core: Fixing minizip-ng build for macOS by Aiiaiiio in [core#192](https://github.com/Euro-Office/core/pull/192)
+* core: libxml2 update by Aiiaiiio in [core#193](https://github.com/Euro-Office/core/pull/193)
+* core: test: pass narrow UTF-8 paths to X2T_Convert in OOXML/test by robintel in [core#166](https://github.com/Euro-Office/core/pull/166)
+* core: csv: drop empty row added for UTF-8 files ending with a line break by robintel in [core#170](https://github.com/Euro-Office/core/pull/170)
+* core: xlsx: preserve pivot cache records on XLSB to XLSX conversion by robintel in [core#169](https://github.com/Euro-Office/core/pull/169)
+* core: vsdx: Fix detection extension for empty vsdx by coffeemakr in [core#197](https://github.com/Euro-Office/core/pull/197)
+* sdkjs: use the standard wheel event in all editors (restores PDF scrolling in Chromium) by chrip in [sdkjs#110](https://github.com/Euro-Office/sdkjs/pull/110)
+* sdkjs: word: skip unused built-in table styles equal to the defaults on save by delmarguillen in [sdkjs#112](https://github.com/Euro-Office/sdkjs/pull/112)
+* web-apps: l10n: a quality review of the Danish translation across all editors by bargib in [web-apps#329](https://github.com/Euro-Office/web-apps/pull/329)
+* web-apps: mobile: don't crash in uk/pl locales due to undefined license warning translation by nykula in [web-apps#185](https://github.com/Euro-Office/web-apps/pull/185)
+* web-apps: de: show the icons in the wrapping style and page number pickers by bargib in [web-apps#320](https://github.com/Euro-Office/web-apps/pull/320)
+* web-apps: tips: drop the "Learn more" links to the ONLYOFFICE blog by bargib in [web-apps#354](https://github.com/Euro-Office/web-apps/pull/354)
+* web-apps: l10n: fix typo in Danish track changes menu by bargib in [web-apps#361](https://github.com/Euro-Office/web-apps/pull/361)
+* web-apps: Adding missing suggest_url to config.json by Aiiaiiio in [web-apps#365](https://github.com/Euro-Office/web-apps/pull/365)
+* web-apps: header: use header icon colour for symbols on light themes by rikled in [web-apps#366](https://github.com/Euro-Office/web-apps/pull/366)
+
+### Performance
+
+* sdkjs: word: ⚡ check for table cell content before IsUseInDocument in section updates by moodyjmz in [sdkjs#123](https://github.com/Euro-Office/sdkjs/pull/123)
+* sdkjs: cell: index area listeners to speed up the circular-reference check by MonaAghili in [sdkjs#119](https://github.com/Euro-Office/sdkjs/pull/119)
+* web-apps: help: replace GIFs with WebM/MP4 and recompress PNGs by juliusknorr in [web-apps#352](https://github.com/Euro-Office/web-apps/pull/352)
+
+### Other changes
+
+* DesktopEditors: ci: give matrix build jobs static names by juliusknorr in [DesktopEditors#184](https://github.com/Euro-Office/DesktopEditors/pull/184)
+* DesktopEditors: ci: name releases and use the changelog as release notes by juliusknorr in [DesktopEditors#169](https://github.com/Euro-Office/DesktopEditors/pull/169)
+* DesktopEditors: chore(build): drop mobile web-apps from desktop payload by juliusknorr in [DesktopEditors#203](https://github.com/Euro-Office/DesktopEditors/pull/203)
+* DesktopEditors: build(linux): add --no-package option to build.sh by juliusknorr in [DesktopEditors#171](https://github.com/Euro-Office/DesktopEditors/pull/171)
+* DesktopEditors: ci: build vX.Y.Z-N tags as stable patch builds by juliusknorr in [DesktopEditors#228](https://github.com/Euro-Office/DesktopEditors/pull/228)
+* DesktopEditors: chore: update submodules to latest main branch by rikled in [DesktopEditors#189](https://github.com/Euro-Office/DesktopEditors/pull/189)
+* DesktopEditors: ci: run macOS build on macos-15 by juliusknorr in [DesktopEditors#245](https://github.com/Euro-Office/DesktopEditors/pull/245)
+* DesktopEditors: chore: update submodules to latest main branch by rikled in [DesktopEditors#246](https://github.com/Euro-Office/DesktopEditors/pull/246)
+* desktop-apps: docs: translate Russian comments to English by jvitkauskas in [desktop-apps#21](https://github.com/Euro-Office/desktop-apps/pull/21)
+* desktop-apps: ci: sync workflows from organization templates by eo-robot in [desktop-apps#102](https://github.com/Euro-Office/desktop-apps/pull/102)
+* desktop-sdk: ci: sync workflows from organization templates by eo-robot in [desktop-sdk#33](https://github.com/Euro-Office/desktop-sdk/pull/33)
+* core: ci: mount third-party cache credentials in the core stage by juliusknorr in [core#177](https://github.com/Euro-Office/core/pull/177)
+* core: fix(deps): bump brotli to v1.2.1 by juliusknorr in [core#184](https://github.com/Euro-Office/core/pull/184)
+* core: test(odf): verify the TestEnv conversion produces a valid package by robintel in [core#167](https://github.com/Euro-Office/core/pull/167)
+* core: test(rtf): add unit suite for the RTF lexer by robintel in [core#174](https://github.com/Euro-Office/core/pull/174)
+* core: ci: cancel superseded pull request builds by juliusknorr in [core#195](https://github.com/Euro-Office/core/pull/195)
+* core: ci: pull core-base from docker-ci, build it only when missing by juliusknorr in [core#201](https://github.com/Euro-Office/core/pull/201)
+* core: ci: run macOS jobs on macos-15 by juliusknorr in [core#200](https://github.com/Euro-Office/core/pull/200)
+* sdkjs: build: sdkjs for the mobile editors' engine by rikled in [sdkjs#121](https://github.com/Euro-Office/sdkjs/pull/121)
+* sdkjs: ci: auto-approve and auto-merge non-major renovate updates by juliusknorr in [sdkjs#118](https://github.com/Euro-Office/sdkjs/pull/118)
+* sdkjs: chore(deps): pin dependencies by renovate[bot] in [sdkjs#129](https://github.com/Euro-Office/sdkjs/pull/129)
+* sdkjs: chore(deps): update actions/upload-artifact action to v7 by renovate[bot] in [sdkjs#102](https://github.com/Euro-Office/sdkjs/pull/102)
+* web-apps: i18n(fr): add the 40 missing French strings across all editors by SamsGuamejy in [web-apps#334](https://github.com/Euro-Office/web-apps/pull/334)
+* web-apps: chore(deps): update github/codeql-action action to v4.39.1 by renovate[bot] in [web-apps#355](https://github.com/Euro-Office/web-apps/pull/355)
+* web-apps: chore(deps): update actions/setup-python action to v7.1.0 by renovate[bot] in [web-apps#356](https://github.com/Euro-Office/web-apps/pull/356)
+* web-apps: chore(deps): update dependency webpack to v5.112.1 by renovate[bot] in [web-apps#358](https://github.com/Euro-Office/web-apps/pull/358)
+* web-apps: chore(deps): update dependency webpack to v5.112.2 by renovate[bot] in [web-apps#359](https://github.com/Euro-Office/web-apps/pull/359)
+* web-apps: refactor(common): remove unused Switcher.setThumbPosition by juliusknorr in [web-apps#349](https://github.com/Euro-Office/web-apps/pull/349)
+* web-apps: chore(deps): update dependency webpack-cli to v7.3.0 by renovate[bot] in [web-apps#373](https://github.com/Euro-Office/web-apps/pull/373)
+* web-apps: chore(deps): update dependency webpack-cli to v7.3.1 by renovate[bot] in [web-apps#374](https://github.com/Euro-Office/web-apps/pull/374)
+
+### Compare to v9.3.6
+
+* DesktopEditors: <https://github.com/Euro-Office/DesktopEditors/compare/8b25e8ace5e0...8ab2a23d9425>
+* desktop-apps: <https://github.com/Euro-Office/desktop-apps/compare/7a1297b3172a...7dbcc7b013c5>
+* desktop-sdk: <https://github.com/Euro-Office/desktop-sdk/compare/8cc8d747cb48...fbf9fc440292>
+* core: <https://github.com/Euro-Office/core/compare/a4a1ba1e9c8e...5da2abf0c607>
+* sdkjs: <https://github.com/Euro-Office/sdkjs/compare/40d9b7780f11...a1b8cac5d1bc>
+* web-apps: <https://github.com/Euro-Office/web-apps/compare/ce0ba4954581...f8d4506c130d>
+
 ## v9.3.6-rc.1
 
 ### Features
