@@ -7,3 +7,5 @@ build/.docker-cache
 build/deploy
 build/linux/.docker-cache
 build/linux/deploy
+build/linux/core-package
+.build

@@ -3,3 +3,5 @@
 build_output.log
 build/deploy/
 build/linux/deploy/
+.build/
+build/linux/core-package/

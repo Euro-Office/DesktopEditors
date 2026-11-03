@@ -57,17 +57,20 @@ understanding why there are two very different-looking build systems here:
 
 - **The build definition** — *what* to compile and how to link it — lives in
   **`desktop-apps/win-linux/CMakeLists.txt`**. This is a single, shared,
-  cross-platform CMake project. It is the same on Linux and Windows.
+  cross-platform CMake project. It is the same on Linux and Windows. It is
+  configured and built by **`desktop-apps/scripts/build.sh`** (Linux, macOS) and
+  **`build.ps1`** (Windows), which link core as a package: the prebuilt one
+  from the build cache for the `core` checkout, or core built first when there
+  is none or `core` has local changes (see `core/scripts/core_package.py`).
 
 - **The orchestration** — provision a toolchain, fetch dependencies, invoke
   CMake, run post-build steps, package — is **per-platform**:
   - Linux: a Dockerfile driven by `docker-bake.hcl` (see [linux/](./linux/README.md))
   - Windows: `windows/build.ps1` (see [windows/](./windows/README.md))
 
-Both orchestrators do essentially the same sequence — configure CMake with the
-vcpkg toolchain and a compiler cache, build, install, overlay the common payload,
-generate fonts and theme thumbnails, package — just with platform-appropriate
-tooling.
+Both orchestrators do essentially the same sequence — build through
+desktop-apps' build script, install, overlay the common payload, generate fonts
+and theme thumbnails, package — just with platform-appropriate tooling.
 
 ### Why not just use Docker for both?
 

@@ -122,6 +122,7 @@ if (-not $RepoRoot) {
 if (-not $CommonDir) { $CommonDir = Join-Path $RepoRoot 'common' }
 $VersionFull = "$ProductVersion.0"            # make.ps1 wants a 4-part System.Version
 $InstallDir  = Join-Path $RepoRoot 'desktopeditors'
+$BuildDir    = Join-Path $RepoRoot '.build'
 $PackageDir  = Join-Path $RepoRoot 'desktop-apps\package'
 
 # Mirror the Dockerfile's ENV block. Process-scoped, so cmake/ninja and the
@@ -133,45 +134,6 @@ $env:ABOUT_PAGE_APP_NAME  = "$ProductName"
 # ───────────────────────────── helpers ──────────────────────────────────────
 . (Join-Path $PSScriptRoot 'packaging-helpers.ps1')
 
-function Get-VsInstallPath {
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found - is Visual Studio 2022 installed?" }
-    # Visual Studio 2022: V8's build doesn't support newer versions
-    $p = & $vswhere -latest -products * -version '[17.0,18.0)' `
-            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-            -property installationPath
-    if (-not $p) { throw "No Visual Studio 2022 install with the C++ x64 toolset was found." }
-    return $p
-}
-
-# Run vcvars in a child cmd and import the resulting environment into THIS
-# PowerShell process. vcvars only prepends MSVC/SDK dirs, so it preserves the
-# deterministic PATH ordering we set up below (native tools > Cygwin > rest).
-function Import-VcVars([string]$Arch, [string]$SdkVersion, [string]$VcToolsVersion) {
-    $batName = switch ($Arch) {
-        'x86'   { 'vcvars32.bat' }
-        'arm64' { 'vcvarsarm64.bat' }   # native arm64 host (windows-11-arm)
-        default { 'vcvars64.bat' }
-    }
-    $vcvars  = Join-Path (Get-VsInstallPath) "VC\Auxiliary\Build\$batName"
-    if (-not (Test-Path $vcvars)) { throw "vcvars not found at $vcvars" }
-
-    $verArg = if ($VcToolsVersion) { "-vcvars_ver=$VcToolsVersion" } else { '' }
-    $out = & cmd /c "`"$vcvars`" $SdkVersion $verArg 2>&1 && echo __VCVARS_OK__ && set"
-    $marker = [Array]::FindIndex([string[]]$out, [Predicate[string]]{ param($l) $l.Trim() -eq '__VCVARS_OK__' })
-    if ($marker -lt 0) {
-        $out | Write-Host
-        throw "vcvars failed ($batName $SdkVersion $verArg) - see its output above."
-    }
-    foreach ($line in $out[($marker + 1)..($out.Count - 1)]) {
-        $i = $line.IndexOf('=')
-        if ($i -gt 0) {
-            [Environment]::SetEnvironmentVariable($line.Substring(0, $i), $line.Substring($i + 1), 'Process')
-        }
-    }
-    if (-not $env:VCINSTALLDIR) { throw "vcvars import failed (VCINSTALLDIR empty)." }
-    Write-Host "Imported MSVC environment from $batName (SDK $SdkVersion, tools $env:VCToolsVersion)."
-}
 
 # ───────────────────────── 0. sanity checks ─────────────────────────────────
 Write-Step "0. Validating repository layout"
@@ -363,52 +325,24 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
 
     # ─────────── load MSVC env (vcvars) on top of our ordered PATH ───────────
     Write-Step "Loading MSVC environment (vcvars)"
+    . (Join-Path $RepoRoot 'core\scripts\msvc-env.ps1')
     Import-VcVars -Arch $Arch -SdkVersion $WinSdkVersion -VcToolsVersion $VcToolsVersion
 
-    # ───────────────────────── 7. CMake Configure ───────────────────────────
-    # Generator is Ninja (NOT the VS/MSBuild generator) on purpose: MSBuild
-    # ignores CMAKE_<LANG>_COMPILER_LAUNCHER, Ninja honors it - that launcher
-    # is how the compiler cache attaches. cl.exe is already on PATH from the
-    # vcvars import above; the target arch follows vcvars (x64 via vcvars64).
-    Write-Step "7. CMake Configure"
-    $cmakeArgs = @(
-        '-G', 'Ninja',
-        '-DCMAKE_BUILD_TYPE=Release',
-        "-DCMAKE_TOOLCHAIN_FILE=$($env:VCPKG_ROOT)\scripts\buildsystems\vcpkg.cmake",
-        '-DVCPKG_MANIFEST_MODE=ON',
-        '-DVCPKG_MANIFEST_DIR=core',
-        "-DABOUT_PAGE_APP_NAME=$env:ABOUT_PAGE_APP_NAME"
-    )
-    # sccache caches MSVC object files by content hash and (with
-    # SCCACHE_GHA_ENABLED=true) persists them in the GitHub Actions cache, so a
-    # re-run recompiles only what changed. /Z7 embedded debug info is REQUIRED -
-    # with separate PDBs (/Zi) sccache refuses to cache and you get zero hits.
-    # Verify with `sccache --show-stats` after the build.
-    if (Get-Command sccache -ErrorAction SilentlyContinue) {
-        Write-Host "sccache detected - enabling compiler cache."
-        $cmakeArgs += @(
-            '-DCMAKE_C_COMPILER_LAUNCHER=sccache',
-            '-DCMAKE_CXX_COMPILER_LAUNCHER=sccache',
-            '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded'
-        )
-    } else {
-        Write-Warning "sccache not found on PATH - building WITHOUT a compiler cache."
-    }
-    $cmakeArgs += 'desktop-apps/win-linux/'
-    cmake @cmakeArgs
-    Assert-LastExit "CMake configure"
-
-    # ─────────────────────── 8. CMake Build + Install ───────────────────────
-    # Single-config Ninja: build type comes from CMAKE_BUILD_TYPE, so no
-    # --config here, and the MSBuild-only /p: flags are gone.
-    Write-Step "8. CMake Build"
+    # ───────────────────────────── 7. Build ─────────────────────────────────
+    # desktop-apps' build script holds the CMake configuration. It builds
+    # against a core package: the prebuilt one for the core checkout when the
+    # build cache has it, else core is built first (also when core has local
+    # changes). sccache is used when it is on PATH; verify with
+    # `sccache --show-stats` after the build.
+    Write-Step "7. Build"
     if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --zero-stats | Out-Null }
-    cmake --build . --parallel
-    Assert-LastExit "CMake build"
+    & (Join-Path $RepoRoot 'desktop-apps\scripts\build.ps1') `
+        -Arch $Arch -BuildDir $BuildDir -Core (Join-Path $RepoRoot 'core') -SdkVersion $WinSdkVersion `
+        "-DABOUT_PAGE_APP_NAME=$env:ABOUT_PAGE_APP_NAME"
     if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --show-stats }
 
-    Write-Step "8b. CMake Install"
-    cmake --install .
+    Write-Step "8. CMake Install"
+    cmake --install (Join-Path $BuildDir 'desktop') --prefix $InstallDir
     Assert-LastExit "CMake install"
 
     # ─────────────── 9. overlay the common tree onto the install dir ────────

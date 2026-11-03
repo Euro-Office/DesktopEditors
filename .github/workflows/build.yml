@@ -662,6 +662,10 @@ jobs:
         shell: bash                    # Git Bash on the Windows runners
         run: tar -xzf brand-assets/brand-assets.tar.gz -C .
 
+      # The core-package context of the bake: the prebuilt core, or empty
+      # to build core in Docker
+      - name: Fetch prebuilt core
+        run: ./build/linux/fetch-core.sh
 
       - name: Build packages
         uses: docker/bake-action@4a9a8d494466d37134e2bfca2d3a8de8fb2681ad # v5.13.0
@@ -832,24 +836,17 @@ jobs:
             ${{ runner.os }}-macos-ccache-
 
       # ---- build + stage + package ---- #
+      # Against the prebuilt core when the build cache has it, see
+      # desktop-apps/scripts/build.sh
       - name: Build desktop-sdk
         run: |
-          cmake -S "${REPO}/desktop-sdk/ChromiumBasedEditors/lib" -B "${SDK_BUILD_DIR}" \
-            -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_DESKTOP=1 \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=arm64-osx \
-            -DVCPKG_MANIFEST_MODE=ON \
-            -DVCPKG_MANIFEST_DIR="${REPO}/core" \
-            -DEO_CORE_3RD_PARTY_DIR="${EO_3RDPARTY}" \
-            -DEO_CORE_OUTPUT_DIR="${STAGE}/converter"
-          cmake --build "${SDK_BUILD_DIR}"
+          ./desktop-apps/scripts/build.sh --build-dir "${SDK_BUILD_DIR}" \
+            --third-party-dir "${EO_3RDPARTY}" --ccache \
+            -- -DEO_CORE_OUTPUT_DIR="${STAGE}/converter" -DEO_CORE_TOOLS_DIR="${STAGE}/converter"
 
       - name: Stage the build
         run: |
-          ./build/macos/stage.sh \
-            --stage-dir "${STAGE}" \
-            --3rdparty-dir "${EO_3RDPARTY}"
+          ./build/macos/stage.sh --stage-dir "${STAGE}"
 
       # ---- brand the build output ---- #
       - name: Regenerate icons for this brand
