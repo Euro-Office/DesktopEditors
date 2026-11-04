@@ -1033,12 +1033,14 @@ jobs:
           awk -v h="## $GITHUB_REF_NAME" '$0 == h { f = 1; next } f && /^## / { exit } f' src/CHANGELOG.md > notes.md
           printf '\nBuilt from %s@%s, %s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$RUN_URL" >> notes.md
           flags=(--title "$TITLE" --notes-file notes.md --prerelease="$PRERELEASE" --latest="$LATEST")
+          # Windows artifacts keep their zip/ and inno/ subdirectories.
+          mapfile -t assets < <(find dist -type f | sort)
           # Re-runs update the existing release and replace its assets.
           if gh release view "$GITHUB_REF_NAME" -R "$REPO" >/dev/null 2>&1; then
             gh release edit "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}"
-            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber dist/*
+            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber "${assets[@]}"
           else
-            gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" dist/*
+            gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" "${assets[@]}"
           fi
 
   # ─────────────────────────────────────────────────────────────
@@ -1086,12 +1088,14 @@ jobs:
           awk -v h="## $GITHUB_REF_NAME" '$0 == h { f = 1; next } f && /^## / { exit } f' src/CHANGELOG.md > notes.md
           printf '\nBuilt from %s@%s, %s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$RUN_URL" >> notes.md
           flags=(--title "$TITLE" --notes-file notes.md --prerelease="$PRERELEASE" --latest="$LATEST")
+          # Windows artifacts keep their zip/ and inno/ subdirectories.
+          mapfile -t assets < <(find dist -type f | sort)
           # Re-runs update the existing release and replace its assets.
           if gh release view "$GITHUB_REF_NAME" -R "$REPO" >/dev/null 2>&1; then
             gh release edit "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}"
-            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber dist/*
+            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber "${assets[@]}"
           else
-            gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" dist/*
+            gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" "${assets[@]}"
           fi
 
   # ─────────────────────────────────────────────────────────────
