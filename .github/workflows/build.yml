@@ -866,6 +866,10 @@ jobs:
       # Against the prebuilt core when the build cache has it, see
       # desktop-apps/scripts/build.sh
       - name: Build desktop-sdk
+        env:
+          # Without it, building core takes the newest Python, not this one:
+          # Homebrew's, which is too new for depot_tools
+          CORE_PYTHON: python3
         run: |
           ./desktop-apps/scripts/build.sh --build-dir "${SDK_BUILD_DIR}" \
             --third-party-dir "${EO_3RDPARTY}" --ccache \
