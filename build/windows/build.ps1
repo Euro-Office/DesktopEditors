@@ -136,10 +136,11 @@ $env:ABOUT_PAGE_APP_NAME  = "$ProductName"
 function Get-VsInstallPath {
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
     if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found - is Visual Studio 2022 installed?" }
-    $p = & $vswhere -latest -products * `
+    # Visual Studio 2022: V8's build doesn't support newer versions
+    $p = & $vswhere -latest -products * -version '[17.0,18.0)' `
             -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
             -property installationPath
-    if (-not $p) { throw "No Visual Studio install with the C++ x64 toolset was found." }
+    if (-not $p) { throw "No Visual Studio 2022 install with the C++ x64 toolset was found." }
     return $p
 }
 

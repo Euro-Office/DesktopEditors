@@ -450,6 +450,26 @@ jobs:
             python3
             python3-devel
 
+      # The arm64 image only has Visual Studio 2026, but V8's build supports
+      # Visual Studio up to 2022 (and everything is built with its v143
+      # toolset). build.ps1 picks Visual Studio 2022.
+      - name: Install Visual Studio 2022 Build Tools (arm64)
+        if: matrix.arch == 'arm64'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://aka.ms/vs/17/release/vs_buildtools.exe -OutFile "$env:RUNNER_TEMP\vs_buildtools.exe"
+          $p = Start-Process -Wait -PassThru -FilePath "$env:RUNNER_TEMP\vs_buildtools.exe" -ArgumentList @(
+            '--quiet', '--wait', '--norestart', '--nocache',
+            '--add', 'Microsoft.VisualStudio.Workload.VCTools',
+            '--add', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+            '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64',
+            '--add', 'Microsoft.VisualStudio.Component.VC.ATL.ARM64',
+            '--add', 'Microsoft.VisualStudio.Component.VC.MFC.ARM64',
+            '--add', 'Microsoft.VisualStudio.Component.Windows11SDK.22621',
+            '--add', 'Microsoft.VisualStudio.Component.VC.Llvm.Clang',
+            '--includeRecommended')
+          if ($p.ExitCode -notin @(0, 3010)) { throw "vs_buildtools returned $($p.ExitCode)" }
+
       - name: Install aqtinstall
         shell: pwsh
         run: python -m pip install --upgrade --break-system-packages aqtinstall
@@ -712,8 +732,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   build-macos:
     name: build-macos (${{ matrix.brand.name }})
-    # NOTE: confirm this is still GitHub's current Apple Silicon runner
-    # label before relying on it - these change over time.
+    # V8 needs Xcode 16's SDK
     runs-on: macos-15
     needs: [version, build-common]
     strategy:
@@ -779,8 +798,15 @@ jobs:
           mkdir -p build/deploy/common
           tar -xf common.tar -C build/deploy/common
 
+      # The third-party build scripts need Python >= 3.11 (depot_tools for V8)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # V8 is built with Homebrew's LLVM and lld against Xcode's SDK
       - name: Install Homebrew build prerequisites
-        run: brew install ninja autoconf automake libtool pkg-config ccache
+        run: brew install ninja autoconf automake libtool pkg-config ccache llvm lld
 
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11 # same action build-windows uses; exports VCPKG_ROOT
