@@ -21,6 +21,8 @@ env:
   CACHE_IMAGE_NAME: desktopeditors-build-cache
   BUILD_NUMBER: dev.1
   BUILD_ROOT: /package
+  # Releases take only core packages built on core's main and stable branches
+  EO_CORE_CHANNELS: ${{ startsWith(github.ref, 'refs/tags/') && 'main' || '' }}
 
 # ─────────────────────────────────────────────────────────────
 # BRANDING

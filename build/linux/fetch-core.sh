@@ -4,7 +4,8 @@
 # can't decide this itself: it sees core without its git metadata. When the
 # build cache has no package for core, or core has local changes, the
 # directory stays empty and the Docker build builds core.
-# EO_CORE_CACHE=off|require works as in core/scripts/core_package.py.
+# EO_CORE_CACHE=off|require and EO_CORE_CHANNELS work as in
+# core/scripts/core_package.py.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
