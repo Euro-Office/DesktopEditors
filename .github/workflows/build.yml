@@ -412,6 +412,10 @@ jobs:
       # stores every object as a cache entry of its own
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
       SCCACHE_CACHE_SIZE: 2G
+      # Core, when there is no core package: sccache can't cache MSVC's
+      # precompiled headers
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 2G
     steps:
       # ---- orchestration / environment setup (stays in the workflow) ---- #
       - name: Checkout fork repository (with submodules)
@@ -489,6 +493,15 @@ jobs:
             sccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-
             sccache-windows-
 
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-
+            ccache-windows-
+
       - name: Install Ninja
         shell: pwsh
         run: choco install ninja -y --no-progress
@@ -518,7 +531,7 @@ jobs:
             $extra.SigningBundle = "${{ github.workspace }}\windows-signing-bundle.tar"
             $extra.SkipPackaging = $true
           }
-          .\build\windows\build.ps1 @extra `
+          .\build\windows\build.ps1 @extra -Ccache `
             -CommonDir "${{ github.workspace }}\common" `
             -ProductVersion "${{ needs.version.outputs.product_version }}" `
             -BuildNumber "${{ needs.version.outputs.build_number }}" `
@@ -541,6 +554,19 @@ jobs:
         with:
           path: ${{ env.SCCACHE_DIR }}
           key: sccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ github.run_id }}
+
+      # Only when core was built: with a core package, ccache has nothing new
+      - name: ccache statistics
+        if: always() && hashFiles('.build/core/build.ninja') != ''
+        shell: pwsh
+        run: ccache --show-stats --verbose
+
+      - name: Save ccache
+        if: always() && hashFiles('.build/core/build.ninja') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ github.run_id }}
 
       # ---- collect outputs (stays in the workflow) ---- #
       - if: ${{ !matrix.brand.sign }}

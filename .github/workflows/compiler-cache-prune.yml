@@ -20,7 +20,7 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        for prefix in Linux-desktop- macOS-macos-ccache- sccache-windows-; do
+        for prefix in Linux-desktop- macOS-macos-ccache- sccache-windows- ccache-windows-; do
           gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key "$prefix" \
               --sort created_at --order desc --limit 1000 --json id,key |
             jq -r 'group_by(.key | sub("-[0-9]+$"; "")) | map(.[1:]) | flatten | .[].id' |

@@ -97,6 +97,7 @@ param(
     [switch]$InstallDeps,
     [switch]$BuildMsi,
     [switch]$SkipPackaging,
+    [switch]$Ccache,                # build core through ccache when there is no core package
     [string]$SigningBundle  = ''
 )
 
@@ -337,7 +338,7 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
     Write-Step "7. Build"
     if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --zero-stats | Out-Null }
     & (Join-Path $RepoRoot 'desktop-apps\scripts\build.ps1') `
-        -Arch $Arch -BuildDir $BuildDir -Core (Join-Path $RepoRoot 'core') -SdkVersion $WinSdkVersion `
+        -Arch $Arch -BuildDir $BuildDir -Core (Join-Path $RepoRoot 'core') -SdkVersion $WinSdkVersion -Ccache:$Ccache `
         "-DABOUT_PAGE_APP_NAME=$env:ABOUT_PAGE_APP_NAME"
     if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --show-stats }
 
