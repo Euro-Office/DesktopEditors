@@ -368,8 +368,6 @@ jobs:
           COMPANY_NAME: ${{ matrix.brand.company_name }}
           PRODUCT_NAME: ${{ matrix.brand.product_name }}
           # ------------------
-          NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
-          NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -410,8 +408,6 @@ jobs:
             sign: true
     env:
       PYTHONUTF8: "1"
-      NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
-      NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
       SCCACHE_GHA_ENABLED: "true"
     steps:
       # ---- orchestration / environment setup (stays in the workflow) ---- #
@@ -500,6 +496,8 @@ jobs:
       # ---- build + package (single source of truth: the script) ---- #
       - name: Build & package
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $extra = @{}
           if ('${{ matrix.brand.sign }}' -eq 'true') {
@@ -703,8 +701,6 @@ jobs:
           PUBLISHER_NAME: ${{ matrix.brand.publisher_name }}
           PUBLISHER_URL: ${{ matrix.brand.publisher_url }}
           # ------------------
-          NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
-          NEXTCLOUD_PASS: ${{ secrets.NEXTCLOUD_PASS }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -1001,12 +997,14 @@ jobs:
           awk -v h="## $GITHUB_REF_NAME" '$0 == h { f = 1; next } f && /^## / { exit } f' src/CHANGELOG.md > notes.md
           printf '\nBuilt from %s@%s, %s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$RUN_URL" >> notes.md
           flags=(--title "$TITLE" --notes-file notes.md --prerelease="$PRERELEASE" --latest="$LATEST")
+          # Windows artifacts keep their zip/ and inno/ subdirectories.
+          mapfile -t assets < <(find dist -type f | sort)
           # Re-runs update the existing release and replace its assets.
           if gh release view "$GITHUB_REF_NAME" -R "$REPO" >/dev/null 2>&1; then
             gh release edit "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}"
-            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber dist/*
+            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber "${assets[@]}"
           else
-            gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" dist/*
+            gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" "${assets[@]}"
           fi
 
   # ─────────────────────────────────────────────────────────────
@@ -1054,12 +1052,14 @@ jobs:
           awk -v h="## $GITHUB_REF_NAME" '$0 == h { f = 1; next } f && /^## / { exit } f' src/CHANGELOG.md > notes.md
           printf '\nBuilt from %s@%s, %s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$RUN_URL" >> notes.md
           flags=(--title "$TITLE" --notes-file notes.md --prerelease="$PRERELEASE" --latest="$LATEST")
+          # Windows artifacts keep their zip/ and inno/ subdirectories.
+          mapfile -t assets < <(find dist -type f | sort)
           # Re-runs update the existing release and replace its assets.
           if gh release view "$GITHUB_REF_NAME" -R "$REPO" >/dev/null 2>&1; then
             gh release edit "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}"
-            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber dist/*
+            gh release upload "$GITHUB_REF_NAME" -R "$REPO" --clobber "${assets[@]}"
           else
-            gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" dist/*
+            gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" "${assets[@]}"
           fi
 
   # ─────────────────────────────────────────────────────────────

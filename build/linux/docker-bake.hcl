@@ -137,10 +137,6 @@ target "desktop-linux" {
     core-base       = "target:core-base"
     brand-icons   = "target:brand-icons"
   }
-  secret = [
-    "id=nextcloud_user,env=NEXTCLOUD_USER",
-    "id=nextcloud_pass,env=NEXTCLOUD_PASS",
-  ]
   cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/desktop-linux"]
   cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/desktop-linux,mode=max"]
 }
