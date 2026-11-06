@@ -1,0 +1,12 @@
+{
+  "name": "desktop-smoke-tests",
+  "private": true,
+  "description": "Smoke tests for the installed desktop editors, see README.md",
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-reporter=spec smoke.test.js"
+  },
+  "dependencies": {
+    "chrome-remote-interface": "^0.33.3"
+  }
+}
