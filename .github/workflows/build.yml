@@ -386,10 +386,16 @@ jobs:
   # the upstream desktop-apps/win-linux/package tree. See the note at
   # the bottom of the accompanying summary.
   # ─────────────────────────────────────────────────────────────
+  # Without a package of the pinned core yet, wait for core's CI instead of building core
+  wait-for-core:
+    uses: ./.github/workflows/wait-for-core.yml
+    with:
+      packages: windows-x64/desktop windows-arm64/desktop linux-amd64/desktop linux-arm64/desktop macos-arm64/desktop
+
   build-windows:
     name: build-windows (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
-    needs: [version, build-common, brand-assets]
+    needs: [version, build-common, brand-assets, wait-for-core]
     strategy:
       fail-fast: false
       matrix:
@@ -605,7 +611,7 @@ jobs:
   build-linux:
     name: build-linux (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    needs: [version, build-common, brand-assets]
+    needs: [version, build-common, brand-assets, wait-for-core]
     permissions:
       contents: write
       packages: write
@@ -793,7 +799,7 @@ jobs:
     name: build-macos (${{ matrix.brand.name }})
     # V8 needs Xcode 16's SDK
     runs-on: macos-15
-    needs: [version, build-common]
+    needs: [version, build-common, wait-for-core]
     strategy:
       fail-fast: false
       matrix:
