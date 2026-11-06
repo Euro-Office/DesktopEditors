@@ -81,8 +81,9 @@ location, so it works regardless of your current directory):
 
 In order: validate the repo layout → *(optional)* install dependencies →
 resolve the common payload → set up a deterministic `PATH` (native tools ahead of
-Cygwin) and import the MSVC environment → set up vcpkg → CMake configure (Ninja,
-Release, vcpkg toolchain, sccache if present) → build → install → overlay the
+Cygwin) and import the MSVC environment → set up vcpkg → build with
+`desktop-apps\scripts\build.ps1` (against the prebuilt core when the build
+cache has it, in `.build\`) → install → overlay the
 common payload → generate fonts (`allfontsgen`) and theme thumbnails
 (`allthemesgen`) → package (ZIP, Inno installer, optional MSI).
 

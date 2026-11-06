@@ -32,6 +32,8 @@ BUILD_DATE=$(date -u +%F)
 export REGISTRY TAG PRODUCT_VERSION \
        BUILD_NUMBER BRANDING_DIR COMPANY_NAME PRODUCT_NAME BUILD_COMMITS BUILD_DATE
 
+./fetch-core.sh
+
 docker buildx bake -f ../docker-bake.hcl -f docker-bake.hcl "$TARGET" \
        --set "desktop-linux.contexts.desktop-common=target:desktop-common" \
        --set "*.context=../.."

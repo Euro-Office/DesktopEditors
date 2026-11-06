@@ -96,8 +96,10 @@ The desktop stage (in the bake Dockerfile) follows the standard sequence:
 1. Install the build/system dependencies into the image.
 2. Copy in the relevant submodules (`desktop-sdk`, `desktop-apps`, `core-fonts`)
    plus branding overlays.
-3. Configure CMake with the vcpkg toolchain, Ninja, and `ccache`, then
-   `cmake --build` / `cmake --install`.
+3. Build with `desktop-apps/scripts/build.sh`, then `cmake --install`. It
+   links the prebuilt core from the `core-package` context, which
+   `fetch-core.sh` fills before the bake when the build cache has a package for
+   the `core` checkout; with an empty context it builds core first.
 4. Overlay the `desktop-common` payload onto the installed tree
    (`COPY --from=desktop-common`).
 5. Run `allfontsgen` (fonts) and `allthemesgen` (slide-theme thumbnails), then

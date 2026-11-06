@@ -21,6 +21,8 @@ env:
   CACHE_IMAGE_NAME: desktopeditors-build-cache
   BUILD_NUMBER: dev.1
   BUILD_ROOT: /package
+  # Releases take only core packages built on core's main and stable branches
+  EO_CORE_CHANNELS: ${{ startsWith(github.ref, 'refs/tags/') && 'main' || '' }}
 
 # ─────────────────────────────────────────────────────────────
 # BRANDING
@@ -384,10 +386,16 @@ jobs:
   # the upstream desktop-apps/win-linux/package tree. See the note at
   # the bottom of the accompanying summary.
   # ─────────────────────────────────────────────────────────────
+  # Without a package of the pinned core yet, wait for core's CI instead of building core
+  wait-for-core:
+    uses: ./.github/workflows/wait-for-core.yml
+    with:
+      packages: windows-x64/desktop windows-arm64/desktop linux-amd64/desktop linux-arm64/desktop macos-arm64/desktop
+
   build-windows:
     name: build-windows (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
-    needs: [version, build-common, brand-assets]
+    needs: [version, build-common, brand-assets, wait-for-core]
     strategy:
       fail-fast: false
       matrix:
@@ -408,7 +416,14 @@ jobs:
             sign: true
     env:
       PYTHONUTF8: "1"
-      SCCACHE_GHA_ENABLED: "true"
+      # A directory saved as one Actions cache: sccache's own GitHub backend
+      # stores every object as a cache entry of its own
+      SCCACHE_DIR: ${{ github.workspace }}/.sccache
+      SCCACHE_CACHE_SIZE: 2G
+      # Core, when there is no core package: sccache can't cache MSVC's
+      # precompiled headers
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 2G
     steps:
       # ---- orchestration / environment setup (stays in the workflow) ---- #
       - name: Checkout fork repository (with submodules)
@@ -475,7 +490,25 @@ jobs:
         run: python -m pip install --upgrade --break-system-packages aqtinstall
 
       - name: Set up sccache
-        uses: mozilla-actions/sccache-action@v0.0.10 # puts sccache on PATH + exports the cache tokens
+        uses: mozilla-actions/sccache-action@v0.0.10 # puts sccache on PATH
+
+      - name: Restore sccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: sccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: |
+            sccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-
+            sccache-windows-
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-
+            ccache-windows-
 
       - name: Install Ninja
         shell: pwsh
@@ -506,7 +539,7 @@ jobs:
             $extra.SigningBundle = "${{ github.workspace }}\windows-signing-bundle.tar"
             $extra.SkipPackaging = $true
           }
-          .\build\windows\build.ps1 @extra `
+          .\build\windows\build.ps1 @extra -Ccache `
             -CommonDir "${{ github.workspace }}\common" `
             -ProductVersion "${{ needs.version.outputs.product_version }}" `
             -BuildNumber "${{ needs.version.outputs.build_number }}" `
@@ -516,6 +549,32 @@ jobs:
             -Target standalone `
             -CompanyName "${{ matrix.brand.company_name }}" `
             -ProductName "${{ matrix.brand.product_name }}"
+
+      - name: sccache statistics
+        if: always()
+        shell: pwsh
+        run: sccache --show-stats
+
+      # Even when the build fails or is cancelled, so the next run reuses it
+      - name: Save sccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: sccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ github.run_id }}
+
+      # Only when core was built: with a core package, ccache has nothing new
+      - name: ccache statistics
+        if: always() && hashFiles('.build/core/build.ninja') != ''
+        shell: pwsh
+        run: ccache --show-stats --verbose
+
+      - name: Save ccache
+        if: always() && hashFiles('.build/core/build.ninja') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ github.run_id }}
 
       # ---- collect outputs (stays in the workflow) ---- #
       - if: ${{ !matrix.brand.sign }}
@@ -552,7 +611,7 @@ jobs:
   build-linux:
     name: build-linux (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    needs: [version, build-common, brand-assets]
+    needs: [version, build-common, brand-assets, wait-for-core]
     permissions:
       contents: write
       packages: write
@@ -630,7 +689,9 @@ jobs:
           path: |
             ccache
             nuget-cache
-          key: ${{ runner.os }}-desktop-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ hashFiles('core/vcpkg.json', 'desktop-apps/win-linux/CMakeLists.txt') }}
+          # A new key per run: an exact hit would save nothing, and the cache
+          # would stop following the sources
+          key: ${{ runner.os }}-desktop-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-desktop-${{ matrix.brand.name }}-${{ matrix.arch }}-
             ${{ runner.os }}-desktop-
@@ -662,6 +723,10 @@ jobs:
         shell: bash                    # Git Bash on the Windows runners
         run: tar -xzf brand-assets/brand-assets.tar.gz -C .
 
+      # The core-package context of the bake: the prebuilt core, or empty
+      # to build core in Docker
+      - name: Fetch prebuilt core
+        run: ./build/linux/fetch-core.sh
 
       - name: Build packages
         uses: docker/bake-action@4a9a8d494466d37134e2bfca2d3a8de8fb2681ad # v5.13.0
@@ -734,7 +799,7 @@ jobs:
     name: build-macos (${{ matrix.brand.name }})
     # V8 needs Xcode 16's SDK
     runs-on: macos-15
-    needs: [version, build-common]
+    needs: [version, build-common, wait-for-core]
     strategy:
       fail-fast: false
       matrix:
@@ -823,33 +888,38 @@ jobs:
             ${{ runner.os }}-eo-3rdparty-
 
       - name: Restore ccache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ${{ runner.os }}-macos-ccache-${{ matrix.brand.name }}-${{ hashFiles('core/**/CMakeLists.txt', 'desktop-sdk/**/CMakeLists.txt') }}
+          key: ${{ runner.os }}-macos-ccache-${{ matrix.brand.name }}-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-macos-ccache-${{ matrix.brand.name }}-
             ${{ runner.os }}-macos-ccache-
 
       # ---- build + stage + package ---- #
+      # Against the prebuilt core when the build cache has it, see
+      # desktop-apps/scripts/build.sh
       - name: Build desktop-sdk
+        env:
+          # Without it, building core takes the newest Python, not this one:
+          # Homebrew's, which is too new for depot_tools
+          CORE_PYTHON: python3
         run: |
-          cmake -S "${REPO}/desktop-sdk/ChromiumBasedEditors/lib" -B "${SDK_BUILD_DIR}" \
-            -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_DESKTOP=1 \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=arm64-osx \
-            -DVCPKG_MANIFEST_MODE=ON \
-            -DVCPKG_MANIFEST_DIR="${REPO}/core" \
-            -DEO_CORE_3RD_PARTY_DIR="${EO_3RDPARTY}" \
-            -DEO_CORE_OUTPUT_DIR="${STAGE}/converter"
-          cmake --build "${SDK_BUILD_DIR}"
+          ./desktop-apps/scripts/build.sh --build-dir "${SDK_BUILD_DIR}" \
+            --third-party-dir "${EO_3RDPARTY}" --ccache \
+            -- -DEO_CORE_OUTPUT_DIR="${STAGE}/converter" -DEO_CORE_TOOLS_DIR="${STAGE}/converter"
+
+      # Even when the build fails or is cancelled, so the next run reuses it
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-macos-ccache-${{ matrix.brand.name }}-${{ github.run_id }}
 
       - name: Stage the build
         run: |
-          ./build/macos/stage.sh \
-            --stage-dir "${STAGE}" \
-            --3rdparty-dir "${EO_3RDPARTY}"
+          ./build/macos/stage.sh --stage-dir "${STAGE}"
 
       # ---- brand the build output ---- #
       - name: Regenerate icons for this brand
@@ -899,6 +969,13 @@ jobs:
   # Points release/v* PRs (opened by Euro-Office/release) to the test
   # build's artifacts. Edits its previous comment on re-runs.
   # ─────────────────────────────────────────────────────────────
+  prune-compiler-caches:
+    needs: [build-linux, build-windows, build-macos]
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    permissions:
+      actions: write
+    uses: ./.github/workflows/compiler-cache-prune.yml
+
   pr-comment:
     runs-on: ubuntu-latest
     needs: [build-linux, build-windows, build-macos]

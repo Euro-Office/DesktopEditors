@@ -38,31 +38,25 @@ EO_3RDPARTY=/path/to/3rdparty-cache
 STAGE=/path/to/staging-root  # arbitrary, doesn't need to exist yet - step 1 creates it
 ```
 
-1. **Build `desktop-sdk`** (the native `ascdocumentscore.framework`,
-   `ooxmlsignature.framework`, the 3 `editors_helper*.app` bundles, `x2t`, and
-   every converter — all one CMake project):
+1. **Build `desktop-sdk`** (the native `ascdocumentscore.framework`, the 3
+   `editors_helper*.app` bundles) against core (`x2t`, every converter,
+   `ooxmlsignature.framework`, `allfontsgen`/`allthemesgen`), with
+   desktop-apps' build script:
    ```bash
-   cmake -S "${REPO}/desktop-sdk/ChromiumBasedEditors/lib" -B build-mac-sdk \
-     -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_DESKTOP=1 \
-     -DCMAKE_TOOLCHAIN_FILE="${VCPKG}/scripts/buildsystems/vcpkg.cmake" \
-     -DVCPKG_TARGET_TRIPLET=arm64-osx \
-     -DVCPKG_MANIFEST_MODE=ON \
-     -DVCPKG_MANIFEST_DIR="${REPO}/core" \
-     -DEO_CORE_3RD_PARTY_DIR="${EO_3RDPARTY}" \
-     -DEO_CORE_OUTPUT_DIR="${STAGE}/converter"
-
-   cmake --build build-mac-sdk
+   VCPKG_ROOT="${VCPKG}" "${REPO}/desktop-apps/scripts/build.sh" \
+     --build-dir build-mac-sdk --third-party-dir "${EO_3RDPARTY}" \
+     -- -DEO_CORE_OUTPUT_DIR="${STAGE}/converter" -DEO_CORE_TOOLS_DIR="${STAGE}/converter"
    ```
-   First run fetches boost/openssl/icu/v8/cef via `build_3rdparty.py` —
-   expect this to take a while and need several GB free. Confirm it worked:
-   `${STAGE}/ascdocumentscore.framework`, `${STAGE}/ooxmlsignature.framework`,
-   `${STAGE}/editors_helper.app` (+ GPU/Renderer variants), and
-   `${STAGE}/converter/x2t` should all exist.
+   It downloads the prebuilt core for the `core` checkout when the build cache
+   has it, and builds core first otherwise, or when `core` has local changes.
+   The first run fetches boost/openssl/icu/cef (and v8, when building core) via
+   `build_3rdparty.py` — expect this to take a while and need several GB free.
+   Confirm it worked: `${STAGE}/ascdocumentscore.framework`,
+   `${STAGE}/ooxmlsignature.framework`, `${STAGE}/editors_helper.app`
+   (+ GPU/Renderer variants), and `${STAGE}/converter/x2t` should all exist.
 2. **Stage it** — this is what `stage.sh` automates:
    ```bash
-   "${REPO}/build/macos/stage.sh" \
-     --stage-dir "${STAGE}" \
-     --3rdparty-dir "${EO_3RDPARTY}"
+   "${REPO}/build/macos/stage.sh" --stage-dir "${STAGE}"
    ```
    (`--payload-dir` and `--core-fonts-dir` default to `build/deploy/common` and
    `core-fonts` under the repo root — override with flags or the matching env
@@ -108,10 +102,7 @@ STAGE=/path/to/staging-root  # arbitrary, doesn't need to exist yet - step 1 cre
 
 In order: merge the CMake build's `package/` output into `converter/` → merge
 the web payload (`index.html`, `editors/`, `fonts/`, `providers/`, plus
-`converter/`'s extra config/locale files) → build `allfontsgen`/`allthemesgen`
-standalone (they're not part of the `desktop-sdk` build; rebuilt fresh every
-run, ~1-2 minutes, so they're always current against whatever native code
-changed) → run `allfontsgen` (native + web `AllFonts.js`, `font_selection.bin`)
+`converter/`'s extra config/locale files) → run `allfontsgen` (native + web `AllFonts.js`, `font_selection.bin`)
 → run `allthemesgen` (slide-theme thumbnails) → delete both generator
 binaries from `converter/` so they don't ship.
 

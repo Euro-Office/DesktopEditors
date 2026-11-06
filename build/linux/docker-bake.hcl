@@ -21,6 +21,11 @@ variable "BUILD_NUMBER" {
 }
 
 
+# The prebuilt core, see fetch-core.sh; empty to build core
+variable "CORE_PACKAGE" {
+  default = "./core-package"
+}
+
 variable "BUILD_ROOT" {
   default = "/package"
 }
@@ -136,6 +141,7 @@ target "desktop-linux" {
     desktop-common  = "oci-layout://../deploy/common:${TAG}"
     core-base       = "target:core-base"
     brand-icons   = "target:brand-icons"
+    core-package    = "${CORE_PACKAGE}"
   }
   cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/desktop-linux"]
   cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/desktop-linux,mode=max"]
