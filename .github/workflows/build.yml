@@ -493,7 +493,7 @@ jobs:
         uses: mozilla-actions/sccache-action@v0.0.10 # puts sccache on PATH
 
       - name: Restore sccache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.SCCACHE_DIR }}
           key: sccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ github.run_id }}
@@ -502,7 +502,7 @@ jobs:
             sccache-windows-
 
       - name: Restore ccache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ github.run_id }}
@@ -558,7 +558,7 @@ jobs:
       # Even when the build fails or is cancelled, so the next run reuses it
       - name: Save sccache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.SCCACHE_DIR }}
           key: sccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ github.run_id }}
@@ -571,7 +571,7 @@ jobs:
 
       - name: Save ccache
         if: always() && hashFiles('.build/core/build.ninja') != ''
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-windows-${{ matrix.brand.name }}-${{ matrix.arch }}-${{ github.run_id }}
@@ -888,7 +888,7 @@ jobs:
             ${{ runner.os }}-eo-3rdparty-
 
       - name: Restore ccache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ runner.os }}-macos-ccache-${{ matrix.brand.name }}-${{ github.run_id }}
@@ -912,7 +912,7 @@ jobs:
       # Even when the build fails or is cancelled, so the next run reuses it
       - name: Save ccache
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ runner.os }}-macos-ccache-${{ matrix.brand.name }}-${{ github.run_id }}
@@ -966,8 +966,7 @@ jobs:
           retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
 
   # ─────────────────────────────────────────────────────────────
-  # Points release/v* PRs (opened by Euro-Office/release) to the test
-  # build's artifacts. Edits its previous comment on re-runs.
+  # Deletes compiler caches that newer saves have superseded.
   # ─────────────────────────────────────────────────────────────
   prune-compiler-caches:
     needs: [build-linux, build-windows, build-macos]
@@ -976,6 +975,10 @@ jobs:
       actions: write
     uses: ./.github/workflows/compiler-cache-prune.yml
 
+  # ─────────────────────────────────────────────────────────────
+  # Points release/v* PRs (opened by Euro-Office/release) to the test
+  # build's artifacts. Edits its previous comment on re-runs.
+  # ─────────────────────────────────────────────────────────────
   pr-comment:
     runs-on: ubuntu-latest
     needs: [build-linux, build-windows, build-macos]

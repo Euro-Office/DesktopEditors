@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Euro-Office contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Puts the prebuilt core for the core checkout into build/linux/core-package,
 # the core-package context of the desktop-linux bake target. The Docker build
 # can't decide this itself: it sees core without its git metadata. When the

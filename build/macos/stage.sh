@@ -52,6 +52,16 @@ if [ -z "${STAGE_DIR}" ]; then
     exit 1
 fi
 
+# The generators must not ship, and Xcode copies all of converter/, so the end
+# of this script moves them to GENERATORS_DIR. Put them back for this run,
+# unless a desktop-sdk rebuild has already placed fresh ones in converter/.
+GENERATORS_DIR="${STAGE_DIR}/stage-generators"
+for tool in allfontsgen allthemesgen; do
+    if [ ! -e "${STAGE_DIR}/converter/${tool}" ] && [ -x "${GENERATORS_DIR}/${tool}" ]; then
+        mv "${GENERATORS_DIR}/${tool}" "${STAGE_DIR}/converter/${tool}"
+    fi
+done
+
 for tool in x2t allfontsgen allthemesgen; do
     if [ ! -x "${STAGE_DIR}/converter/${tool}" ]; then
         echo "error: ${STAGE_DIR}/converter/${tool} not found - build desktop-sdk first" 1>&2
@@ -79,11 +89,8 @@ cp -R "${PAYLOAD_DIR}/fonts" "${STAGE_DIR}/fonts"
 cp -R "${PAYLOAD_DIR}/providers" "${STAGE_DIR}/providers"
 cp -R "${PAYLOAD_DIR}/converter/." "${STAGE_DIR}/converter/"
 
-# allfontsgen/allthemesgen aren't part of the desktop-sdk build - build them
-# standalone, straight into converter/, same as x2t's own dylib siblings.
-# Rebuilt every run (not cached) so they're always current against whatever
-# kernel/graphics fixes have landed - the MAC-macro bug earlier this session
-# was invisible until these tools were actually exercised.
+# allfontsgen/allthemesgen come with the core package (or the from-source core
+# build) and are installed into converter/ next to x2t's dylibs.
 echo "==> Generating fonts"
 # allfontsgen caches: if converter/fonts.log matches what it just scanned AND
 # converter/font_selection.bin (always that literal filename, regardless of
@@ -130,8 +137,9 @@ if [ -z "$(ls -A "${STAGE_DIR}/editors/sdkjs/common/Images" 2>/dev/null)" ]; the
     exit 1
 fi
 
-echo "==> Removing generator binaries from converter/ (dev tools, not shipped)"
-rm -f "${STAGE_DIR}/converter/allfontsgen" "${STAGE_DIR}/converter/allthemesgen"
+echo "==> Moving generator binaries out of converter/ (dev tools, not shipped)"
+mkdir -p "${GENERATORS_DIR}"
+mv -f "${STAGE_DIR}/converter/allfontsgen" "${STAGE_DIR}/converter/allthemesgen" "${GENERATORS_DIR}/"
 
 echo ""
 echo "Staging complete: ${STAGE_DIR}"

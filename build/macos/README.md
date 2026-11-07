@@ -103,8 +103,8 @@ STAGE=/path/to/staging-root  # arbitrary, doesn't need to exist yet - step 1 cre
 In order: merge the CMake build's `package/` output into `converter/` → merge
 the web payload (`index.html`, `editors/`, `fonts/`, `providers/`, plus
 `converter/`'s extra config/locale files) → run `allfontsgen` (native + web `AllFonts.js`, `font_selection.bin`)
-→ run `allthemesgen` (slide-theme thumbnails) → delete both generator
-binaries from `converter/` so they don't ship.
+→ run `allthemesgen` (slide-theme thumbnails) → move both generator
+binaries from `converter/` to `stage-generators/` so they don't ship.
 
 Mirrors the equivalent sequence in Linux's
 `desktop-apps/.docker/desktop-apps.bake.Dockerfile` and Windows'
@@ -123,6 +123,7 @@ Windows' fuller flag set.
   catch that class of failure.
 - **Safe to re-run.** Each run fully replaces `editors/`, `fonts/`, and
   `providers/` from the payload dir and regenerates the font/theme data from
-  scratch, so stale content from a previous run doesn't linger.
+  scratch, so stale content from a previous run doesn't linger. The
+  generators are moved back from `stage-generators/` for the run.
 - **`--stage-dir` must already have a built `package/`.** The script fails
   fast with a clear message if it doesn't, rather than staging a broken tree.
