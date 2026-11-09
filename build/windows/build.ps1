@@ -167,8 +167,6 @@ function Import-VcVars([string]$Arch, [string]$SdkVersion, [string]$VcToolsVersi
     if (-not (Test-Path $vcvars)) { throw "vcvars not found at $vcvars" }
 
     $verArg = if ($VcToolsVersion) { "-vcvars_ver=$VcToolsVersion" } else { '' }
-    # vcvars points VCPKG_ROOT at the vcpkg bundled with Visual Studio
-    $vcpkgRoot = $env:VCPKG_ROOT
     $out = & cmd /c "`"$vcvars`" $SdkVersion $verArg 2>&1 && echo __VCVARS_OK__ && set"
     $marker = [Array]::FindIndex([string[]]$out, [Predicate[string]]{ param($l) $l.Trim() -eq '__VCVARS_OK__' })
     if ($marker -lt 0) {
@@ -181,7 +179,6 @@ function Import-VcVars([string]$Arch, [string]$SdkVersion, [string]$VcToolsVersi
             [Environment]::SetEnvironmentVariable($line.Substring(0, $i), $line.Substring($i + 1), 'Process')
         }
     }
-    if ($vcpkgRoot) { $env:VCPKG_ROOT = $vcpkgRoot }
     if (-not $env:VCINSTALLDIR) { throw "vcvars import failed (VCINSTALLDIR empty)." }
     Write-Host "Imported MSVC environment from $batName (SDK $SdkVersion, tools $env:VCToolsVersion)."
 }
