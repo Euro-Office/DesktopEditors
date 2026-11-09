@@ -14,19 +14,16 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 STAGE_DIR="${STAGE_DIR:-}"
 PAYLOAD_DIR="${PAYLOAD_DIR:-${REPO_ROOT}/build/deploy/common}"
 CORE_FONTS_DIR="${CORE_FONTS_DIR:-${REPO_ROOT}/core-fonts}"
-EO_CORE_3RD_PARTY_DIR="${EO_CORE_3RD_PARTY_DIR:-}"
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") --stage-dir <path> --3rdparty-dir <path> [options]
+Usage: $(basename "$0") --stage-dir <path> [options]
 
 Required:
   --stage-dir <path>       The desktop-sdk CMake build directory (must already
-                            contain a built converter/x2t - build desktop-sdk
-                            first, see "The three steps" (step 1) in
+                            contain converter/x2t, allfontsgen and allthemesgen -
+                            build desktop-sdk first, see "The steps" (step 1) in
                             build/macos/README.md).
-  --3rdparty-dir <path>    EO_CORE_3RD_PARTY_DIR - where boost/icu/v8/etc. were
-                            fetched to (same value used to build desktop-sdk).
 
 Optional:
   --payload-dir <path>     Extracted desktop-common web payload.
@@ -34,8 +31,8 @@ Optional:
   --core-fonts-dir <path>  The core-fonts submodule checkout.
                             Default: ${REPO_ROOT}/core-fonts
 
-Env vars STAGE_DIR, PAYLOAD_DIR, CORE_FONTS_DIR, EO_CORE_3RD_PARTY_DIR work the
-same as the matching flags.
+Env vars STAGE_DIR, PAYLOAD_DIR, CORE_FONTS_DIR work the same as the matching
+flags.
 EOF
 }
 
@@ -44,25 +41,36 @@ while [ $# -gt 0 ]; do
         --stage-dir) STAGE_DIR="$2"; shift 2 ;;
         --payload-dir) PAYLOAD_DIR="$2"; shift 2 ;;
         --core-fonts-dir) CORE_FONTS_DIR="$2"; shift 2 ;;
-        --3rdparty-dir) EO_CORE_3RD_PARTY_DIR="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "error: unknown argument: $1" 1>&2; usage 1>&2; exit 1 ;;
     esac
 done
 
-if [ -z "${STAGE_DIR}" ] || [ -z "${EO_CORE_3RD_PARTY_DIR}" ]; then
-    echo "error: --stage-dir and --3rdparty-dir are required." 1>&2
+if [ -z "${STAGE_DIR}" ]; then
+    echo "error: --stage-dir is required." 1>&2
     usage 1>&2
     exit 1
 fi
 
-if [ ! -x "${STAGE_DIR}/converter/x2t" ]; then
-    echo "error: ${STAGE_DIR}/converter/x2t not found - build desktop-sdk first" 1>&2
-    echo "(see \"The three steps\" (step 1) in build/macos/README.md). This" 1>&2
-    echo "script only stages an already-built tree, it doesn't build" 1>&2
-    echo "desktop-sdk itself." 1>&2
-    exit 1
-fi
+# The generators must not ship, and Xcode copies all of converter/, so the end
+# of this script moves them to GENERATORS_DIR. Put them back for this run,
+# unless a desktop-sdk rebuild has already placed fresh ones in converter/.
+GENERATORS_DIR="${STAGE_DIR}/stage-generators"
+for tool in allfontsgen allthemesgen; do
+    if [ ! -e "${STAGE_DIR}/converter/${tool}" ] && [ -x "${GENERATORS_DIR}/${tool}" ]; then
+        mv "${GENERATORS_DIR}/${tool}" "${STAGE_DIR}/converter/${tool}"
+    fi
+done
+
+for tool in x2t allfontsgen allthemesgen; do
+    if [ ! -x "${STAGE_DIR}/converter/${tool}" ]; then
+        echo "error: ${STAGE_DIR}/converter/${tool} not found - build desktop-sdk first" 1>&2
+        echo "(see \"The steps\" (step 1) in build/macos/README.md). This" 1>&2
+        echo "script only stages an already-built tree, it doesn't build" 1>&2
+        echo "desktop-sdk itself." 1>&2
+        exit 1
+    fi
+done
 
 for f in index.html editors fonts providers converter; do
     if [ ! -e "${PAYLOAD_DIR}/${f}" ]; then
@@ -73,11 +81,6 @@ for f in index.html editors fonts providers converter; do
     fi
 done
 
-if ! command -v ninja >/dev/null 2>&1; then
-    echo "error: ninja not found on PATH." 1>&2
-    exit 1
-fi
-
 echo "==> Merging web payload"
 cp "${PAYLOAD_DIR}/index.html" "${STAGE_DIR}/index.html"
 rm -rf "${STAGE_DIR}/editors" "${STAGE_DIR}/fonts" "${STAGE_DIR}/providers"
@@ -86,38 +89,8 @@ cp -R "${PAYLOAD_DIR}/fonts" "${STAGE_DIR}/fonts"
 cp -R "${PAYLOAD_DIR}/providers" "${STAGE_DIR}/providers"
 cp -R "${PAYLOAD_DIR}/converter/." "${STAGE_DIR}/converter/"
 
-# allfontsgen/allthemesgen aren't part of the desktop-sdk build - build them
-# standalone, straight into converter/, same as x2t's own dylib siblings.
-# Rebuilt every run (not cached) so they're always current against whatever
-# kernel/graphics fixes have landed - the MAC-macro bug earlier this session
-# was invisible until these tools were actually exercised.
-TOOLS_DIR="${STAGE_DIR}/.tools"
-mkdir -p "${TOOLS_DIR}"
-
-build_tool() {
-    local name="$1"
-    local src_dir="$2"
-    local build_dir="${TOOLS_DIR}/${name}-build"
-
-    echo "==> Building ${name}"
-    if [ ! -f "${build_dir}/CMakeCache.txt" ]; then
-        cmake -S "${src_dir}" -B "${build_dir}" \
-            -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DEO_CORE_3RD_PARTY_DIR="${EO_CORE_3RD_PARTY_DIR}" \
-            -DEO_CORE_TOOLS_DIR="${STAGE_DIR}/converter"
-    fi
-    cmake --build "${build_dir}"
-
-    # Ninja may legitimately skip the build (nothing changed since last time),
-    # which skips the POST_BUILD copy_artifacts_to_folder() too - but the
-    # destination gets deleted every run by the cleanup step below, so it must
-    # be re-copied unconditionally, not just when Ninja actually rebuilt it.
-    cp "${build_dir}/${name}" "${STAGE_DIR}/converter/${name}"
-}
-
-build_tool allfontsgen "${REPO_ROOT}/core/DesktopEditor/AllFontsGen"
-build_tool allthemesgen "${REPO_ROOT}/core/DesktopEditor/allthemesgen"
-
+# allfontsgen/allthemesgen come with the core package (or the from-source core
+# build) and are installed into converter/ next to x2t's dylibs.
 echo "==> Generating fonts"
 # allfontsgen caches: if converter/fonts.log matches what it just scanned AND
 # converter/font_selection.bin (always that literal filename, regardless of
@@ -164,8 +137,9 @@ if [ -z "$(ls -A "${STAGE_DIR}/editors/sdkjs/common/Images" 2>/dev/null)" ]; the
     exit 1
 fi
 
-echo "==> Removing generator binaries from converter/ (dev tools, not shipped)"
-rm -f "${STAGE_DIR}/converter/allfontsgen" "${STAGE_DIR}/converter/allthemesgen"
+echo "==> Moving generator binaries out of converter/ (dev tools, not shipped)"
+mkdir -p "${GENERATORS_DIR}"
+mv -f "${STAGE_DIR}/converter/allfontsgen" "${STAGE_DIR}/converter/allthemesgen" "${GENERATORS_DIR}/"
 
 echo ""
 echo "Staging complete: ${STAGE_DIR}"
