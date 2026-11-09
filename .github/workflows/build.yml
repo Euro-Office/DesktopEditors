@@ -465,25 +465,10 @@ jobs:
             python3
             python3-devel
 
-      # The arm64 image only has Visual Studio 2026, but V8's build supports
-      # Visual Studio up to 2022 (and everything is built with its v143
-      # toolset). build.ps1 picks Visual Studio 2022.
-      - name: Install Visual Studio 2022 Build Tools (arm64)
-        if: matrix.arch == 'arm64'
-        shell: pwsh
-        run: |
-          Invoke-WebRequest https://aka.ms/vs/17/release/vs_buildtools.exe -OutFile "$env:RUNNER_TEMP\vs_buildtools.exe"
-          $p = Start-Process -Wait -PassThru -FilePath "$env:RUNNER_TEMP\vs_buildtools.exe" -ArgumentList @(
-            '--quiet', '--wait', '--norestart', '--nocache',
-            '--add', 'Microsoft.VisualStudio.Workload.VCTools',
-            '--add', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
-            '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64',
-            '--add', 'Microsoft.VisualStudio.Component.VC.ATL.ARM64',
-            '--add', 'Microsoft.VisualStudio.Component.VC.MFC.ARM64',
-            '--add', 'Microsoft.VisualStudio.Component.Windows11SDK.22621',
-            '--add', 'Microsoft.VisualStudio.Component.VC.Llvm.Clang',
-            '--includeRecommended')
-          if ($p.ExitCode -notin @(0, 3010)) { throw "vs_buildtools returned $($p.ExitCode)" }
+      # The arm64 image only has Visual Studio 2026, with the v143 toolset
+      # of Visual Studio 2022 (14.44) that everything is built with: V8's
+      # build supports Visual Studio up to 2022. build.ps1 picks the Visual
+      # Studio that has the toolset.
 
       - name: Install aqtinstall
         shell: pwsh
@@ -517,6 +502,23 @@ jobs:
       - name: Set up vcpkg
         uses: lukka/run-vcpkg@v11 # exports VCPKG_ROOT for the script
 
+      # vcpkg's own GitHub cache backend (x-gha) is gone: keep its binary
+      # cache in a directory. A new runner image (compiler) starts a new key.
+      - name: vcpkg cache key
+        id: vcpkg-key
+        shell: pwsh
+        run: |
+          $hash = '${{ hashFiles('core/vcpkg.json', 'core/vcpkg-configuration.json') }}'
+          "key=vcpkg-windows-${{ matrix.arch }}-$env:ImageVersion-$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ github.workspace }}/.cache/vcpkg
+          key: ${{ steps.vcpkg-key.outputs.key }}
+          restore-keys: vcpkg-windows-${{ matrix.arch }}-
+
       - uses: actions/download-artifact@v4
         with:
           name: brand-assets-${{ matrix.brand.name }}
@@ -532,6 +534,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Here, not in env: run-vcpkg sets it for the later steps
+          $vcpkgCache = '${{ github.workspace }}/.cache/vcpkg'
+          New-Item -ItemType Directory -Force -Path $vcpkgCache | Out-Null
+          $env:VCPKG_BINARY_SOURCES = "clear;files,$vcpkgCache,readwrite"
           $extra = @{}
           if ('${{ matrix.brand.sign }}' -eq 'true') {
             # Packages must be built from signed binaries, so leave that to
@@ -549,6 +555,15 @@ jobs:
             -Target standalone `
             -CompanyName "${{ matrix.brand.company_name }}" `
             -ProductName "${{ matrix.brand.product_name }}"
+
+      # Both brands of an arch share the key: the second save is skipped.
+      # Not empty: an exact hit would never be saved again.
+      - name: Save vcpkg binary cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true' && hashFiles('.cache/vcpkg/**') != ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ github.workspace }}/.cache/vcpkg
+          key: ${{ steps.vcpkg-key.outputs.key }}
 
       - name: sccache statistics
         if: always()
