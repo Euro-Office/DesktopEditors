@@ -133,10 +133,20 @@ $env:ABOUT_PAGE_APP_NAME  = "$ProductName"
 # ───────────────────────────── helpers ──────────────────────────────────────
 . (Join-Path $PSScriptRoot 'packaging-helpers.ps1')
 
-function Get-VsInstallPath {
+# With a toolset version (e.g. 14.44, the v143 toolset of Visual Studio 2022),
+# the newest Visual Studio that has it: Visual Studio 2026 can install the v143
+# toolset, and GitHub's arm64 image has only Visual Studio 2026. Without one,
+# Visual Studio 2022: V8's build doesn't support newer versions.
+function Get-VsInstallPath([string]$VcToolsVersion) {
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
     if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found - is Visual Studio 2022 installed?" }
-    # Visual Studio 2022: V8's build doesn't support newer versions
+    if ($VcToolsVersion) {
+        $p = & $vswhere -products * -version '[17.0,)' -sort -property installationPath |
+            Where-Object { Test-Path (Join-Path $_ "VC\Tools\MSVC\$VcToolsVersion.*") } |
+            Select-Object -First 1
+        if (-not $p) { throw "No Visual Studio install with the MSVC $VcToolsVersion toolset was found." }
+        return $p
+    }
     $p = & $vswhere -latest -products * -version '[17.0,18.0)' `
             -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
             -property installationPath
@@ -153,10 +163,12 @@ function Import-VcVars([string]$Arch, [string]$SdkVersion, [string]$VcToolsVersi
         'arm64' { 'vcvarsarm64.bat' }   # native arm64 host (windows-11-arm)
         default { 'vcvars64.bat' }
     }
-    $vcvars  = Join-Path (Get-VsInstallPath) "VC\Auxiliary\Build\$batName"
+    $vcvars  = Join-Path (Get-VsInstallPath $VcToolsVersion) "VC\Auxiliary\Build\$batName"
     if (-not (Test-Path $vcvars)) { throw "vcvars not found at $vcvars" }
 
     $verArg = if ($VcToolsVersion) { "-vcvars_ver=$VcToolsVersion" } else { '' }
+    # vcvars points VCPKG_ROOT at the vcpkg bundled with Visual Studio
+    $vcpkgRoot = $env:VCPKG_ROOT
     $out = & cmd /c "`"$vcvars`" $SdkVersion $verArg 2>&1 && echo __VCVARS_OK__ && set"
     $marker = [Array]::FindIndex([string[]]$out, [Predicate[string]]{ param($l) $l.Trim() -eq '__VCVARS_OK__' })
     if ($marker -lt 0) {
@@ -169,6 +181,7 @@ function Import-VcVars([string]$Arch, [string]$SdkVersion, [string]$VcToolsVersi
             [Environment]::SetEnvironmentVariable($line.Substring(0, $i), $line.Substring($i + 1), 'Process')
         }
     }
+    if ($vcpkgRoot) { $env:VCPKG_ROOT = $vcpkgRoot }
     if (-not $env:VCINSTALLDIR) { throw "vcvars import failed (VCINSTALLDIR empty)." }
     Write-Host "Imported MSVC environment from $batName (SDK $SdkVersion, tools $env:VCToolsVersion)."
 }
