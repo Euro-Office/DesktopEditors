@@ -23,6 +23,16 @@ env:
   BUILD_ROOT: /package
   # Releases take only core packages built on core's main and stable branches
   EO_CORE_CHANNELS: ${{ startsWith(github.ref, 'refs/tags/') && 'main' || '' }}
+  # Only the public repository writes the shared ghcr build caches. A private
+  # copy of this repository (used for security fixes before their release day)
+  # reads them but never writes, so its build output stays out of shared caches.
+  WRITE_BUILD_CACHE: ${{ github.repository == 'Euro-Office/DesktopEditors' }}
+
+# Repository variables, unset in the public repository:
+#   PRIVATE_SUBMODULES     space-separated submodule names, e.g. "desktop-sdk",
+#                          fetched from Euro-Office/<name>-private instead
+#   DESKTOP_PLATFORMS      build only these of "windows linux macos"
+#   DESKTOP_LINUX_ARCHES   JSON list of Linux architectures, e.g. ["amd64"]
 
 # ─────────────────────────────────────────────────────────────
 # BRANDING
@@ -50,6 +60,9 @@ env:
 
 jobs:
   version:
+    # A private copy builds pull requests and manual runs only; its main just
+    # follows the public main. Every other job needs this one or wait-for-core.
+    if: github.event_name != 'push' || github.repository == 'Euro-Office/DesktopEditors'
     runs-on: ubuntu-latest
     outputs:
       product_version:      ${{ steps.meta.outputs.product_version }}
@@ -186,7 +199,7 @@ jobs:
             *.context=..
             brand-icons.tags=
             brand-icons.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}brand-icons-buildcache
-            brand-icons.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}brand-icons-buildcache,mode=max
+            ${{ env.WRITE_BUILD_CACHE == 'true' && format('brand-icons.cache-to=type=registry,ref={0}/{1}:{2}-{3}brand-icons-buildcache,mode=max', env.REGISTRY, env.CACHE_IMAGE_NAME, needs.version.outputs.ref_name, matrix.brand.cache_prefix) || '' }}
             brand-icons.output=type=local,dest=./brand-assets
 
       - name: Pack the overlay tree
@@ -251,6 +264,17 @@ jobs:
             extra_targets_common: ""
             cache_prefix: "nextcloud-office-"
     steps:
+      - name: Fetch listed submodules from their private copies
+        if: vars.PRIVATE_SUBMODULES != ''
+        shell: bash
+        env:
+          PRIVATE_SUBMODULES: ${{ vars.PRIVATE_SUBMODULES }}
+        run: |
+          for name in $PRIVATE_SUBMODULES; do
+            git config --global "url.https://github.com/Euro-Office/${name}-private.git.insteadOf" \
+              "https://github.com/Euro-Office/${name}.git"
+          done
+
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -349,23 +373,23 @@ jobs:
             *.context=..
             core-wasm.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-wasm-buildcache
             core-wasm.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}core-wasm-buildcache
-            core-wasm.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-wasm-buildcache,mode=max
+            ${{ env.WRITE_BUILD_CACHE == 'true' && format('core-wasm.cache-to=type=registry,ref={0}/{1}:{2}-{3}core-wasm-buildcache,mode=max', env.REGISTRY, env.CACHE_IMAGE_NAME, needs.version.outputs.ref_name, matrix.brand.cache_prefix) || '' }}
             core-wasm.tags=
             sdkjs-desktop.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}sdkjs-desktop-buildcache
             sdkjs-desktop.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}sdkjs-desktop-buildcache
-            sdkjs-desktop.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}sdkjs-desktop-buildcache,mode=max
+            ${{ env.WRITE_BUILD_CACHE == 'true' && format('sdkjs-desktop.cache-to=type=registry,ref={0}/{1}:{2}-{3}sdkjs-desktop-buildcache,mode=max', env.REGISTRY, env.CACHE_IMAGE_NAME, needs.version.outputs.ref_name, matrix.brand.cache_prefix) || '' }}
             sdkjs-desktop.tags=
             desktop-js.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-js-buildcache
             desktop-js.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}desktop-js-buildcache
-            desktop-js.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-js-buildcache,mode=max
+            ${{ env.WRITE_BUILD_CACHE == 'true' && format('desktop-js.cache-to=type=registry,ref={0}/{1}:{2}-{3}desktop-js-buildcache,mode=max', env.REGISTRY, env.CACHE_IMAGE_NAME, needs.version.outputs.ref_name, matrix.brand.cache_prefix) || '' }}
             desktop-js.tags=
             web-apps.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}web-apps-buildcache
             web-apps.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}web-apps-buildcache
-            web-apps.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}web-apps-buildcache,mode=max
+            ${{ env.WRITE_BUILD_CACHE == 'true' && format('web-apps.cache-to=type=registry,ref={0}/{1}:{2}-{3}web-apps-buildcache,mode=max', env.REGISTRY, env.CACHE_IMAGE_NAME, needs.version.outputs.ref_name, matrix.brand.cache_prefix) || '' }}
             web-apps.tags=
             desktop-common.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache
             desktop-common.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}desktop-common-buildcache
-            desktop-common.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-common-buildcache,mode=max
+            ${{ env.WRITE_BUILD_CACHE == 'true' && format('desktop-common.cache-to=type=registry,ref={0}/{1}:{2}-{3}desktop-common-buildcache,mode=max', env.REGISTRY, env.CACHE_IMAGE_NAME, needs.version.outputs.ref_name, matrix.brand.cache_prefix) || '' }}
             desktop-common.tags=${{ format('{0}/{1}:{2}', env.REGISTRY, matrix.brand.image_name, needs.version.outputs.sha_short) }}
             desktop-common.output=type=tar,dest=./common.tar
         env:
@@ -404,6 +428,7 @@ jobs:
       packages: wasm/engine
 
   wait-for-core:
+    if: github.event_name != 'push' || github.repository == 'Euro-Office/DesktopEditors'
     uses: ./.github/workflows/wait-for-core.yml
     with:
       packages: windows-x64/desktop windows-arm64/desktop linux-amd64/desktop linux-arm64/desktop macos-arm64/desktop
@@ -412,6 +437,7 @@ jobs:
     name: build-windows (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
     needs: [version, build-common, brand-assets, wait-for-core]
+    if: vars.DESKTOP_PLATFORMS == '' || contains(vars.DESKTOP_PLATFORMS, 'windows')
     strategy:
       fail-fast: false
       matrix:
@@ -442,6 +468,17 @@ jobs:
       CCACHE_MAXSIZE: 2G
     steps:
       # ---- orchestration / environment setup (stays in the workflow) ---- #
+      - name: Fetch listed submodules from their private copies
+        if: vars.PRIVATE_SUBMODULES != ''
+        shell: bash
+        env:
+          PRIVATE_SUBMODULES: ${{ vars.PRIVATE_SUBMODULES }}
+        run: |
+          for name in $PRIVATE_SUBMODULES; do
+            git config --global "url.https://github.com/Euro-Office/${name}-private.git.insteadOf" \
+              "https://github.com/Euro-Office/${name}.git"
+          done
+
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -643,15 +680,14 @@ jobs:
     name: build-linux (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     needs: [version, build-common, brand-assets, wait-for-core]
+    if: vars.DESKTOP_PLATFORMS == '' || contains(vars.DESKTOP_PLATFORMS, 'linux')
     permissions:
       contents: write
       packages: write
     strategy:
       fail-fast: false
       matrix:
-        arch:
-          - amd64
-          - arm64
+        arch: ${{ fromJSON(vars.DESKTOP_LINUX_ARCHES || '["amd64", "arm64"]') }}
         brand:
           - name: euro-office
             company_name: Euro-Office
@@ -677,6 +713,17 @@ jobs:
             extra_targets_linux: ""
             cache_prefix: "nextcloud-office-"
     steps:
+      - name: Fetch listed submodules from their private copies
+        if: vars.PRIVATE_SUBMODULES != ''
+        shell: bash
+        env:
+          PRIVATE_SUBMODULES: ${{ vars.PRIVATE_SUBMODULES }}
+        run: |
+          for name in $PRIVATE_SUBMODULES; do
+            git config --global "url.https://github.com/Euro-Office/${name}-private.git.insteadOf" \
+              "https://github.com/Euro-Office/${name}.git"
+          done
+
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -772,16 +819,16 @@ jobs:
             *.context=../..
             core-base.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache
             core-base.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}core-base-buildcache
-            core-base.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}core-base-buildcache,mode=max
+            ${{ env.WRITE_BUILD_CACHE == 'true' && format('core-base.cache-to=type=registry,ref={0}/{1}:{2}-{3}core-base-buildcache,mode=max', env.REGISTRY, env.CACHE_IMAGE_NAME, needs.version.outputs.ref_name, matrix.brand.cache_prefix) || '' }}
             core-base.tags=
             desktop-linux.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache
             desktop-linux.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache
-            desktop-linux.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}desktop-linux-buildcache,mode=max
+            ${{ env.WRITE_BUILD_CACHE == 'true' && format('desktop-linux.cache-to=type=registry,ref={0}/{1}:{2}-{3}desktop-linux-buildcache,mode=max', env.REGISTRY, env.CACHE_IMAGE_NAME, needs.version.outputs.ref_name, matrix.brand.cache_prefix) || '' }}
             desktop-linux.tags=
             desktop-linux.contexts.desktop-common=./common
             packages.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}packages-buildcache
             packages.cache-from+=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:main-${{ matrix.brand.cache_prefix }}packages-buildcache
-            packages.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE_NAME }}:${{ needs.version.outputs.ref_name }}-${{ matrix.brand.cache_prefix }}packages-buildcache,mode=max
+            ${{ env.WRITE_BUILD_CACHE == 'true' && format('packages.cache-to=type=registry,ref={0}/{1}:{2}-{3}packages-buildcache,mode=max', env.REGISTRY, env.CACHE_IMAGE_NAME, needs.version.outputs.ref_name, matrix.brand.cache_prefix) || '' }}
             packages.tags=
         env:
           GIT_COMMIT: ${{ needs.version.outputs.sha_short }}
@@ -831,6 +878,7 @@ jobs:
     # V8 needs Xcode 16's SDK
     runs-on: macos-15
     needs: [version, build-common, wait-for-core]
+    if: vars.DESKTOP_PLATFORMS == '' || contains(vars.DESKTOP_PLATFORMS, 'macos')
     strategy:
       fail-fast: false
       matrix:
@@ -870,6 +918,17 @@ jobs:
       CCACHE_DIR: /Users/runner/.ccache
       DMG_PATH: build/macos/out/${{ matrix.brand.package_name }}-${{ needs.version.outputs.product_version }}-${{ needs.version.outputs.build_number }}-macos-arm64.dmg
     steps:
+      - name: Fetch listed submodules from their private copies
+        if: vars.PRIVATE_SUBMODULES != ''
+        shell: bash
+        env:
+          PRIVATE_SUBMODULES: ${{ vars.PRIVATE_SUBMODULES }}
+        run: |
+          for name in $PRIVATE_SUBMODULES; do
+            git config --global "url.https://github.com/Euro-Office/${name}-private.git.insteadOf" \
+              "https://github.com/Euro-Office/${name}.git"
+          done
+
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -1059,7 +1118,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   release-info:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'Euro-Office/DesktopEditors'
     outputs:
       stable: ${{ steps.check.outputs.stable }}
     steps:
@@ -1077,7 +1136,7 @@ jobs:
   publish-release:
     runs-on: ubuntu-latest
     needs: [release-info, build-linux, build-windows, build-macos]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'Euro-Office/DesktopEditors'
     permissions:
       contents: write
     steps:
@@ -1129,7 +1188,7 @@ jobs:
   publish-nextcloud-release:
     runs-on: ubuntu-latest
     needs: [release-info, build-linux, build-windows, build-macos]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'Euro-Office/DesktopEditors'
     permissions:
       contents: read
     steps:
@@ -1183,7 +1242,7 @@ jobs:
   publish-files:
     runs-on: ubuntu-latest
     needs: [version, build-linux, build-windows, build-macos]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'Euro-Office/DesktopEditors'
     permissions:
       contents: read
     steps:
