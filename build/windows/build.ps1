@@ -55,6 +55,10 @@
     Appcast URL for in-app updates (WinSparkle). Needs -UpdatePublicKey, the
     base64 EdDSA key the updates are signed with. Empty: no updater.
 
+.PARAMETER UpdateVersion
+    The version the updater compares with the feed's (the workflow's
+    update_version, e.g. 9.3.8rc.1). Default: the product version.
+
 .PARAMETER SigningBundle
     Also write a tar at this path holding everything sign-package.ps1 needs
     to sign and package the build on a separate signing server: the install
@@ -104,7 +108,8 @@ param(
     [switch]$Ccache,                # build core through ccache when there is no core package
     [string]$SigningBundle  = '',
     [string]$UpdateFeedUrl  = '',
-    [string]$UpdatePublicKey = ''
+    [string]$UpdatePublicKey = '',
+    [string]$UpdateVersion  = ''
 )
 
 Set-StrictMode -Version Latest
@@ -346,7 +351,8 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
     & (Join-Path $RepoRoot 'desktop-apps\scripts\build.ps1') `
         -Arch $Arch -BuildDir $BuildDir -Core (Join-Path $RepoRoot 'core') -SdkVersion $WinSdkVersion -Ccache:$Ccache `
         "-DABOUT_PAGE_APP_NAME=$env:ABOUT_PAGE_APP_NAME" `
-        "-DEO_UPDATE_FEED_URL=$UpdateFeedUrl" "-DEO_UPDATE_PUBLIC_KEY=$UpdatePublicKey"
+        "-DEO_UPDATE_FEED_URL=$UpdateFeedUrl" "-DEO_UPDATE_PUBLIC_KEY=$UpdatePublicKey" `
+        "-DEO_UPDATE_VERSION=$(if ($UpdateVersion) { $UpdateVersion } else { $ProductVersion })"
     if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --show-stats }
 
     Write-Step "8. CMake Install"

@@ -117,6 +117,26 @@ and `dev.1`. They can be overridden locally:
 | `BUILD_NUMBER`                    | build identifier                         | `dev.1`                |
 | `COMPANY_NAME` / `PRODUCT_NAME`   | shown in the app's About page            | `Euro-Office` / `DesktopEditors` |
 
+### In-app updates (Windows, macOS)
+
+Sparkle (macOS) and WinSparkle (Windows) read a signed feed. A build has an
+updater only when it gets a public key; make a key pair with
+`build/updates/appcast.py genkey`.
+
+| Repository setting                        | Kind     | Used by                                       |
+| ----------------------------------------- | -------- | --------------------------------------------- |
+| `UPDATE_TEST_PUBLIC_KEY`                  | variable | builds of no tag                              |
+| `UPDATE_TEST_PRIVATE_KEY`                 | secret   | manual runs with `publish_updater_test`       |
+| `EURO_OFFICE_UPDATE_PUBLIC_KEY`           | variable | Euro-Office releases                          |
+| `EURO_OFFICE_UPDATE_PRIVATE_KEY`          | secret   | `update-feeds` on tags                        |
+| `NEXTCLOUD_OFFICE_UPDATE_PUBLIC_KEY`      | variable | Nextcloud Office releases (feeds made by hand after signing) |
+
+Releases look for updates in the brand's latest release
+(`releases/latest/download/<brand>-appcast-<macos|windows>.xml`), other builds
+in this repository's `updater-test` pre-release. To test: run the workflow by
+hand with `publish_updater_test` twice and update the first build to the
+second.
+
 ## Where to go next
 
 - Building on **[Linux](./linux/README.md)**
