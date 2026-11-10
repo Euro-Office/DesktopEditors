@@ -51,6 +51,10 @@
     Also build the MSI with Advanced Installer. Off by default to match the
     workflow, where the MSI step is currently commented out. Requires a license.
 
+.PARAMETER UpdateFeedUrl
+    Appcast URL for in-app updates (WinSparkle). Needs -UpdatePublicKey, the
+    base64 EdDSA key the updates are signed with. Empty: no updater.
+
 .PARAMETER SigningBundle
     Also write a tar at this path holding everything sign-package.ps1 needs
     to sign and package the build on a separate signing server: the install
@@ -98,7 +102,9 @@ param(
     [switch]$BuildMsi,
     [switch]$SkipPackaging,
     [switch]$Ccache,                # build core through ccache when there is no core package
-    [string]$SigningBundle  = ''
+    [string]$SigningBundle  = '',
+    [string]$UpdateFeedUrl  = '',
+    [string]$UpdatePublicKey = ''
 )
 
 Set-StrictMode -Version Latest
@@ -339,7 +345,8 @@ Either download the 'common-files' CI artifact and pass -CommonDir, or rerun wit
     if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --zero-stats | Out-Null }
     & (Join-Path $RepoRoot 'desktop-apps\scripts\build.ps1') `
         -Arch $Arch -BuildDir $BuildDir -Core (Join-Path $RepoRoot 'core') -SdkVersion $WinSdkVersion -Ccache:$Ccache `
-        "-DABOUT_PAGE_APP_NAME=$env:ABOUT_PAGE_APP_NAME"
+        "-DABOUT_PAGE_APP_NAME=$env:ABOUT_PAGE_APP_NAME" `
+        "-DEO_UPDATE_FEED_URL=$UpdateFeedUrl" "-DEO_UPDATE_PUBLIC_KEY=$UpdatePublicKey"
     if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --show-stats }
 
     Write-Step "8. CMake Install"

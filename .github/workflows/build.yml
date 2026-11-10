@@ -424,12 +424,18 @@ jobs:
             product_name: Euro-Office
             # Unsigned, packaged here and published to the GitHub release.
             sign: false
+            # In-app updates: off while these repository variables are unset
+            update_feed_url: ${{ vars.EURO_OFFICE_UPDATE_FEED_URL }}
+            update_public_key: ${{ vars.EURO_OFFICE_UPDATE_PUBLIC_KEY }}
           - name: nextcloud-office
             company_name: Nextcloud Office
             product_name: Nextcloud Office
             # Only a signing bundle here; signed + packaged on the signing
             # server (build/windows/sign-package.ps1).
             sign: true
+            # In-app updates: off while these repository variables are unset
+            update_feed_url: ${{ vars.NEXTCLOUD_OFFICE_UPDATE_FEED_URL }}
+            update_public_key: ${{ vars.NEXTCLOUD_OFFICE_UPDATE_PUBLIC_KEY }}
     env:
       PYTHONUTF8: "1"
       # A directory saved as one Actions cache: sccache's own GitHub backend
@@ -570,7 +576,9 @@ jobs:
             -VcToolsVersion '${{ matrix.arch == 'arm64' && '14.44' || '' }}' `
             -Target standalone `
             -CompanyName "${{ matrix.brand.company_name }}" `
-            -ProductName "${{ matrix.brand.product_name }}"
+            -ProductName "${{ matrix.brand.product_name }}" `
+            -UpdateFeedUrl "${{ matrix.brand.update_feed_url }}" `
+            -UpdatePublicKey "${{ matrix.brand.update_public_key }}"
 
       # Both brands of an arch share the key: the second save is skipped.
       # Not empty: an exact hit would never be saved again.
@@ -848,6 +856,9 @@ jobs:
             company_name: Euro-Office
             product_name: Euro-Office
             bundle_id: asc.euro-office.Euro-Office
+            # In-app updates: off while these repository variables are unset
+            update_feed_url: ${{ vars.EURO_OFFICE_UPDATE_FEED_URL }}
+            update_public_key: ${{ vars.EURO_OFFICE_UPDATE_PUBLIC_KEY }}
             app_icon_svg: ""
             tab_icon_light_svg: ""
             tab_icon_dark_svg: ""
@@ -859,6 +870,9 @@ jobs:
             company_name: Nextcloud Office
             product_name: Nextcloud Office
             bundle_id: asc.nextcloud-office.Nextcloud-Office
+            # In-app updates: off while these repository variables are unset
+            update_feed_url: ${{ vars.NEXTCLOUD_OFFICE_UPDATE_FEED_URL }}
+            update_public_key: ${{ vars.NEXTCLOUD_OFFICE_UPDATE_PUBLIC_KEY }}
             app_icon_svg: build/brands/nextcloud-office-brand/svg/app-icon.svg
             tab_icon_light_svg: build/brands/nextcloud-office-brand/svg/logo-light.svg
             tab_icon_dark_svg: build/brands/nextcloud-office-brand/svg/logo-dark.svg
@@ -970,7 +984,8 @@ jobs:
           ./desktop-apps/macos/apply-branding.sh \
             --company-name "${{ matrix.brand.company_name }}" \
             --product-name "${{ matrix.brand.product_name }}" \
-            --version "${{ needs.version.outputs.product_version }}"
+            --version "${{ needs.version.outputs.product_version }}" \
+            ${{ matrix.brand.update_feed_url && format('--update-feed-url "{0}" --update-public-key "{1}"', matrix.brand.update_feed_url, matrix.brand.update_public_key) || '' }}
 
       - name: Build the Xcode project
         run: |
