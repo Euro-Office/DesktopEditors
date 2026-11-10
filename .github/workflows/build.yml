@@ -11,6 +11,11 @@ on:
   # the private submodules + the brand repo) is empty and the build hard-fails.
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_updater_test:
+        description: Publish the Euro-Office Windows/macOS packages to the updater-test pre-release, where builds of no tag look for updates
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -56,6 +61,7 @@ jobs:
       build_number:         ${{ steps.meta.outputs.build_number }}
       ref_name:             ${{ steps.meta.outputs.ref_name }}
       sha_short:            ${{ steps.meta.outputs.sha_short }}
+      update_version:       ${{ steps.meta.outputs.update_version }}
     steps:
       # Shallow, no submodules — this job only needs the VERSION file.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -66,46 +72,13 @@ jobs:
       - name: Compute version
         id: meta
         run: |
-          REF_NAME=$(echo "$GITHUB_REF_NAME" | tr '/' '-')
-          echo "ref_name=${REF_NAME}" >> $GITHUB_OUTPUT
+          echo "ref_name=$(echo "$GITHUB_REF_NAME" | tr '/' '-')" >> "$GITHUB_OUTPUT"
           echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-          IS_TAG=${{ startsWith(github.ref, 'refs/tags/') }}
-
-          # Parse PRODUCT_VERSION / BUILD_NUMBER from the git tag.
-          # Supported formats:
-          #   v9.3.1-rc.1  → product_version=9.3.1  build_number=0~rc.1
-          #   v9.3.1       → product_version=9.3.1  build_number=0
-          #   v9.3.1-1     → product_version=9.3.1  build_number=1
-          # The "0~" prefix sorts a prerelease before the final release
-          # (9.3.1-0~rc.1 < 9.3.1-0) in both dpkg and rpm; a patch build
-          # sorts after it (9.3.1-0 < 9.3.1-1).
-          # Fall back to the VERSION file for non-tag builds.
-          if [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-([1-9][0-9]*)$ ]]; then
-            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "build_number=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
-          elif [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([^-]+)-(.+)$ ]]; then
-            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "build_number=0~${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
-          elif [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "build_number=0" >> $GITHUB_OUTPUT
-          elif [[ "$IS_TAG" == "true" ]]; then
-            echo "::error::Unsupported tag format: $GITHUB_REF_NAME (expected vX.Y.Z or vX.Y.Z-ID)"
-            exit 1
+          # product_version, build_number and update_version (see the script)
+          if [ "${{ startsWith(github.ref, 'refs/tags/') }}" = true ]; then
+            build/version.sh --tag "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
           else
-            VERSION_FILE=$(cat VERSION.txt 2>/dev/null | tr -d '[:space:]')
-            # Split like a tag: release PRs carry 9.3.6-rc.1 → version=9.3.6 build=0~rc.1
-            if [[ "${VERSION_FILE}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-([1-9][0-9]*)$ ]]; then
-              echo "product_version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-              echo "build_number=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
-            elif [[ "${VERSION_FILE}" =~ ^([^-]+)-(.+)$ ]]; then
-              echo "product_version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-              echo "build_number=0~${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
-            else
-              echo "product_version=${VERSION_FILE}" >> $GITHUB_OUTPUT
-              echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
-            fi
+            build/version.sh --dev "$GITHUB_RUN_NUMBER" | tee -a "$GITHUB_OUTPUT"
           fi
 
   # ─────────────────────────────────────────────────────────────
@@ -424,14 +397,25 @@ jobs:
             product_name: Euro-Office
             # Unsigned, packaged here and published to the GitHub release.
             sign: false
+            # In-app updates: <vars_prefix>_UPDATE_PUBLIC_KEY, feed in release_repo
+            vars_prefix: EURO_OFFICE
+            release_repo: ${{ github.repository }}
           - name: nextcloud-office
             company_name: Nextcloud Office
             product_name: Nextcloud Office
             # Only a signing bundle here; signed + packaged on the signing
             # server (build/windows/sign-package.ps1).
             sign: true
+            # In-app updates: <vars_prefix>_UPDATE_PUBLIC_KEY, feed in release_repo
+            vars_prefix: NEXTCLOUD_OFFICE
+            release_repo: nextcloud-releases/Office-DesktopEditors
     env:
       PYTHONUTF8: "1"
+      # In-app updates. Releases: the brand's key and the feed of its latest
+      # release. Other builds: the test key and the updater-test pre-release
+      # (see updater-test-release). No key, no updater.
+      UPDATE_PUBLIC_KEY: ${{ startsWith(github.ref, 'refs/tags/') && vars[format('{0}_UPDATE_PUBLIC_KEY', matrix.brand.vars_prefix)] || !startsWith(github.ref, 'refs/tags/') && vars.UPDATE_TEST_PUBLIC_KEY || '' }}
+      UPDATE_FEED_URL: ${{ startsWith(github.ref, 'refs/tags/') && format('https://github.com/{0}/releases/latest/download/{1}-appcast-windows.xml', matrix.brand.release_repo, matrix.brand.name) || format('https://github.com/{0}/releases/download/updater-test/{1}-appcast-windows.xml', github.repository, matrix.brand.name) }}
       # A directory saved as one Actions cache: sccache's own GitHub backend
       # stores every object as a cache entry of its own
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
@@ -570,7 +554,10 @@ jobs:
             -VcToolsVersion '${{ matrix.arch == 'arm64' && '14.44' || '' }}' `
             -Target standalone `
             -CompanyName "${{ matrix.brand.company_name }}" `
-            -ProductName "${{ matrix.brand.product_name }}"
+            -ProductName "${{ matrix.brand.product_name }}" `
+            -UpdateFeedUrl $(if ($env:UPDATE_PUBLIC_KEY) { $env:UPDATE_FEED_URL } else { '' }) `
+            -UpdatePublicKey "$env:UPDATE_PUBLIC_KEY" `
+            -UpdateVersion "${{ needs.version.outputs.update_version }}"
 
       # Both brands of an arch share the key: the second save is skipped.
       # Not empty: an exact hit would never be saved again.
@@ -848,6 +835,9 @@ jobs:
             company_name: Euro-Office
             product_name: Euro-Office
             bundle_id: asc.euro-office.Euro-Office
+            # In-app updates: <vars_prefix>_UPDATE_PUBLIC_KEY, feed in release_repo
+            vars_prefix: EURO_OFFICE
+            release_repo: ${{ github.repository }}
             app_icon_svg: ""
             tab_icon_light_svg: ""
             tab_icon_dark_svg: ""
@@ -859,6 +849,9 @@ jobs:
             company_name: Nextcloud Office
             product_name: Nextcloud Office
             bundle_id: asc.nextcloud-office.Nextcloud-Office
+            # In-app updates: <vars_prefix>_UPDATE_PUBLIC_KEY, feed in release_repo
+            vars_prefix: NEXTCLOUD_OFFICE
+            release_repo: nextcloud-releases/Office-DesktopEditors
             app_icon_svg: build/brands/nextcloud-office-brand/svg/app-icon.svg
             tab_icon_light_svg: build/brands/nextcloud-office-brand/svg/logo-light.svg
             tab_icon_dark_svg: build/brands/nextcloud-office-brand/svg/logo-dark.svg
@@ -869,6 +862,11 @@ jobs:
       SDK_BUILD_DIR: ${{ github.workspace }}/build-mac-sdk
       CCACHE_DIR: /Users/runner/.ccache
       DMG_PATH: build/macos/out/${{ matrix.brand.package_name }}-${{ needs.version.outputs.product_version }}-${{ needs.version.outputs.build_number }}-macos-arm64.dmg
+      # In-app updates. Releases: the brand's key and the feed of its latest
+      # release. Other builds: the test key and the updater-test pre-release
+      # (see updater-test-release). No key, no updater.
+      UPDATE_PUBLIC_KEY: ${{ startsWith(github.ref, 'refs/tags/') && vars[format('{0}_UPDATE_PUBLIC_KEY', matrix.brand.vars_prefix)] || !startsWith(github.ref, 'refs/tags/') && vars.UPDATE_TEST_PUBLIC_KEY || '' }}
+      UPDATE_FEED_URL: ${{ startsWith(github.ref, 'refs/tags/') && format('https://github.com/{0}/releases/latest/download/{1}-appcast-macos.xml', matrix.brand.release_repo, matrix.brand.name) || format('https://github.com/{0}/releases/download/updater-test/{1}-appcast-macos.xml', github.repository, matrix.brand.name) }}
     steps:
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -970,7 +968,9 @@ jobs:
           ./desktop-apps/macos/apply-branding.sh \
             --company-name "${{ matrix.brand.company_name }}" \
             --product-name "${{ matrix.brand.product_name }}" \
-            --version "${{ needs.version.outputs.product_version }}"
+            --version "${{ needs.version.outputs.product_version }}" \
+            --bundle-version "${{ needs.version.outputs.update_version }}" \
+            ${UPDATE_PUBLIC_KEY:+--update-feed-url "$UPDATE_FEED_URL" --update-public-key "$UPDATE_PUBLIC_KEY"}
 
       - name: Build the Xcode project
         run: |
@@ -1117,6 +1117,66 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" -R "$REPO" "${flags[@]}" "${assets[@]}"
           fi
+
+  # ─────────────────────────────────────────────────────────────
+  # UPDATER TEST - manual runs with publish_updater_test put this build's
+  # euro-office Windows/macOS packages on the updater-test pre-release,
+  # where builds of no tag look for updates (feeds: update-feeds below)
+  # ─────────────────────────────────────────────────────────────
+  updater-test-release:
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-macos]
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_updater_test
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      TAG: updater-test
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-packages-euro-office-*'
+          path: dist
+          merge-multiple: true
+
+      - name: Replace the updater-test packages
+        run: |
+          set -euo pipefail
+          notes="Test of in-app updates, from run $GITHUB_RUN_ID. Not a release."
+          if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
+            # Only this build's packages: the feed must offer nothing else
+            gh release view "$TAG" -R "$REPO" --json assets --jq '.assets[].name' |
+              while read -r name; do gh release delete-asset "$TAG" "$name" -R "$REPO" --yes; done
+            gh release edit "$TAG" -R "$REPO" --notes "$notes"
+          else
+            gh release create "$TAG" -R "$REPO" --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "Updater test" --notes "$notes"
+          fi
+          mapfile -t files < <(find dist -name '*-macos-*.dmg' -o -name '*-windows-*.exe' | sort)
+          gh release upload "$TAG" -R "$REPO" "${files[@]}"
+
+  # ─────────────────────────────────────────────────────────────
+  # UPDATE FEEDS - signed feeds for the euro-office Windows/macOS packages
+  # of a release (the apps read them through releases/latest/download/, so
+  # only stable releases are offered) or of updater-test. Nextcloud Office
+  # is code-signed by hand later; run update-feeds.yml for it afterwards.
+  # ─────────────────────────────────────────────────────────────
+  update-feeds:
+    needs: [version, publish-release, updater-test-release]
+    if: >-
+      always() &&
+      ((startsWith(github.ref, 'refs/tags/') && needs.publish-release.result == 'success') ||
+       needs.updater-test-release.result == 'success')
+    permissions:
+      contents: write
+    uses: ./.github/workflows/update-feeds.yml
+    with:
+      tag: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'updater-test' }}
+      brand: euro-office
+      test: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      update_version: ${{ needs.version.outputs.update_version }}
+    secrets: inherit
 
   # ─────────────────────────────────────────────────────────────
   # PUBLISH - nextcloud-office to nextcloud-releases/Office-DesktopEditors
