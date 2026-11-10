@@ -25,6 +25,12 @@ variable "BUILD_NUMBER" {
 }
 
 
+# Core's prebuilt WebAssembly modules, see fetch-core-wasm.sh; empty to build
+# core-wasm
+variable "CORE_WASM_PACKAGE" {
+  default = ""
+}
+
 variable "BUILD_ROOT" {
   default = "/package"
 }
@@ -114,6 +120,15 @@ target "core-wasm" {
   cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/core-wasm,mode=max"]
 }
 
+# core-wasm from the package: the same files at the same place
+target "core-wasm-prebuilt" {
+  inherits          = ["_common"]
+  dockerfile-inline = "FROM scratch\nCOPY --from=core-wasm-package / ${BUILD_ROOT}/\n"
+  contexts = {
+    core-wasm-package = CORE_WASM_PACKAGE
+  }
+}
+
 target "desktop-js" {
   inherits   = ["_common"]
   context    = ".."
@@ -132,7 +147,7 @@ target "sdkjs-desktop" {
   cache-from = ["type=local,src=./.docker-cache/${REGISTRY}/sdkjs-desktop"]
   cache-to   = ["type=local,dest=./.docker-cache/${REGISTRY}/sdkjs-desktop,mode=max"]
   contexts = {
-    core-wasm    = "target:core-wasm"
+    core-wasm    = CORE_WASM_PACKAGE != "" ? "target:core-wasm-prebuilt" : "target:core-wasm"
   }
 }
 

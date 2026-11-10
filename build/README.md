@@ -62,6 +62,8 @@ understanding why there are two very different-looking build systems here:
   **`build.ps1`** (Windows), which link core as a package: the prebuilt one
   from the build cache for the `core` checkout, or core built first when there
   is none or `core` has local changes (see `core/scripts/core_package.py`).
+  The editors' WebAssembly modules come from core's `wasm/engine` package the
+  same way (`build/fetch-core-wasm.sh`, bake variable `CORE_WASM_PACKAGE`).
 
 - **The orchestration** — provision a toolchain, fetch dependencies, invoke
   CMake, run post-build steps, package — is **per-platform**:
