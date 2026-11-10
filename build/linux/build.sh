@@ -33,6 +33,10 @@ export REGISTRY TAG PRODUCT_VERSION \
        BUILD_NUMBER BRANDING_DIR COMPANY_NAME PRODUCT_NAME BUILD_COMMITS BUILD_DATE
 
 ./fetch-core.sh
+../fetch-core-wasm.sh
+if [ -d ../core-wasm-package ]; then
+    export CORE_WASM_PACKAGE=../core-wasm-package
+fi
 
 docker buildx bake -f ../docker-bake.hcl -f docker-bake.hcl "$TARGET" \
        --set "desktop-linux.contexts.desktop-common=target:desktop-common" \
