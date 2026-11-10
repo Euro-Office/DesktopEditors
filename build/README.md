@@ -129,7 +129,13 @@ updater only when it gets a public key; make a key pair with
 | `UPDATE_TEST_PRIVATE_KEY`                 | secret   | manual runs with `publish_updater_test`       |
 | `EURO_OFFICE_UPDATE_PUBLIC_KEY`           | variable | Euro-Office releases                          |
 | `EURO_OFFICE_UPDATE_PRIVATE_KEY`          | secret   | `update-feeds` on tags                        |
-| `NEXTCLOUD_OFFICE_UPDATE_PUBLIC_KEY`      | variable | Nextcloud Office releases (feeds made by hand after signing) |
+| `NEXTCLOUD_OFFICE_UPDATE_PUBLIC_KEY`      | variable | Nextcloud Office releases                     |
+| `NEXTCLOUD_OFFICE_UPDATE_PRIVATE_KEY`     | secret   | `update-feeds.yml`, run by hand               |
+
+The feeds sign the files on the release, so they come last. Euro-Office
+releases get them from the build workflow. Nextcloud Office is code-signed by
+hand (`windows/sign-package.ps1`), so once its signed files are uploaded run
+`gh workflow run update-feeds.yml -f tag=<tag> -f brand=nextcloud-office`.
 
 Releases look for updates in the brand's latest release
 (`releases/latest/download/<brand>-appcast-<macos|windows>.xml`), other builds

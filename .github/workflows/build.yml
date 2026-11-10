@@ -61,7 +61,7 @@ jobs:
       build_number:         ${{ steps.meta.outputs.build_number }}
       ref_name:             ${{ steps.meta.outputs.ref_name }}
       sha_short:            ${{ steps.meta.outputs.sha_short }}
-      update_version:       ${{ steps.update.outputs.update_version }}
+      update_version:       ${{ steps.meta.outputs.update_version }}
     steps:
       # Shallow, no submodules — this job only needs the VERSION file.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -72,68 +72,14 @@ jobs:
       - name: Compute version
         id: meta
         run: |
-          REF_NAME=$(echo "$GITHUB_REF_NAME" | tr '/' '-')
-          echo "ref_name=${REF_NAME}" >> $GITHUB_OUTPUT
+          echo "ref_name=$(echo "$GITHUB_REF_NAME" | tr '/' '-')" >> "$GITHUB_OUTPUT"
           echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-          IS_TAG=${{ startsWith(github.ref, 'refs/tags/') }}
-
-          # Parse PRODUCT_VERSION / BUILD_NUMBER from the git tag.
-          # Supported formats:
-          #   v9.3.1-rc.1  → product_version=9.3.1  build_number=0~rc.1
-          #   v9.3.1       → product_version=9.3.1  build_number=0
-          #   v9.3.1-1     → product_version=9.3.1  build_number=1
-          # The "0~" prefix sorts a prerelease before the final release
-          # (9.3.1-0~rc.1 < 9.3.1-0) in both dpkg and rpm; a patch build
-          # sorts after it (9.3.1-0 < 9.3.1-1).
-          # Fall back to the VERSION file for non-tag builds.
-          if [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-([1-9][0-9]*)$ ]]; then
-            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "build_number=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
-          elif [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([^-]+)-(.+)$ ]]; then
-            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "build_number=0~${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
-          elif [[ "$IS_TAG" == "true" && "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "product_version=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
-            echo "build_number=0" >> $GITHUB_OUTPUT
-          elif [[ "$IS_TAG" == "true" ]]; then
-            echo "::error::Unsupported tag format: $GITHUB_REF_NAME (expected vX.Y.Z or vX.Y.Z-ID)"
-            exit 1
+          # product_version, build_number and update_version (see the script)
+          if [ "${{ startsWith(github.ref, 'refs/tags/') }}" = true ]; then
+            build/version.sh --tag "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
           else
-            VERSION_FILE=$(cat VERSION.txt 2>/dev/null | tr -d '[:space:]')
-            # Split like a tag: release PRs carry 9.3.6-rc.1 → version=9.3.6 build=0~rc.1
-            if [[ "${VERSION_FILE}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-([1-9][0-9]*)$ ]]; then
-              echo "product_version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-              echo "build_number=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
-            elif [[ "${VERSION_FILE}" =~ ^([^-]+)-(.+)$ ]]; then
-              echo "product_version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-              echo "build_number=0~${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
-            else
-              echo "product_version=${VERSION_FILE}" >> $GITHUB_OUTPUT
-              echo "build_number=${{ env.BUILD_NUMBER }}" >> $GITHUB_OUTPUT
-            fi
+            build/version.sh --dev "$GITHUB_RUN_NUMBER" | tee -a "$GITHUB_OUTPUT"
           fi
-
-      # The version the updaters compare (CFBundleVersion, WinSparkle's build
-      # version, sparkle:version in the feed). No dashes: Sparkle ignores
-      # everything after one. 9.3.8 -> 9.3.8, 9.3.8-1 -> 9.3.8.1,
-      # 9.3.8-rc.1 -> 9.3.8rc.1, which sorts before 9.3.8. Builds of no tag
-      # add dev.<run number>, so a later run is an update (9.3.8rc.1dev.42).
-      - name: Compute update version
-        id: update
-        env:
-          PRODUCT_VERSION: ${{ steps.meta.outputs.product_version }}
-          BUILD: ${{ steps.meta.outputs.build_number }}
-          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
-        run: |
-          case "$BUILD" in
-            0|"$BUILD_NUMBER") v="$PRODUCT_VERSION" ;;
-            0~*)               v="$PRODUCT_VERSION${BUILD#0~}" ;;
-            *)                 v="$PRODUCT_VERSION.$BUILD" ;;
-          esac
-          v="${v//-/.}"
-          [ "$IS_TAG" = true ] || v="${v}dev.${GITHUB_RUN_NUMBER}"
-          echo "update_version=$v" | tee -a "$GITHUB_OUTPUT"
 
   # ─────────────────────────────────────────────────────────────
   # BUILD (common / Linux / Docker / WASM)
@@ -467,7 +413,7 @@ jobs:
       PYTHONUTF8: "1"
       # In-app updates. Releases: the brand's key and the feed of its latest
       # release. Other builds: the test key and the updater-test pre-release
-      # (see update-feeds). No key, no updater.
+      # (see updater-test-release). No key, no updater.
       UPDATE_PUBLIC_KEY: ${{ startsWith(github.ref, 'refs/tags/') && vars[format('{0}_UPDATE_PUBLIC_KEY', matrix.brand.vars_prefix)] || !startsWith(github.ref, 'refs/tags/') && vars.UPDATE_TEST_PUBLIC_KEY || '' }}
       UPDATE_FEED_URL: ${{ startsWith(github.ref, 'refs/tags/') && format('https://github.com/{0}/releases/latest/download/{1}-appcast-windows.xml', matrix.brand.release_repo, matrix.brand.name) || format('https://github.com/{0}/releases/download/updater-test/{1}-appcast-windows.xml', github.repository, matrix.brand.name) }}
       # A directory saved as one Actions cache: sccache's own GitHub backend
@@ -918,7 +864,7 @@ jobs:
       DMG_PATH: build/macos/out/${{ matrix.brand.package_name }}-${{ needs.version.outputs.product_version }}-${{ needs.version.outputs.build_number }}-macos-arm64.dmg
       # In-app updates. Releases: the brand's key and the feed of its latest
       # release. Other builds: the test key and the updater-test pre-release
-      # (see update-feeds). No key, no updater.
+      # (see updater-test-release). No key, no updater.
       UPDATE_PUBLIC_KEY: ${{ startsWith(github.ref, 'refs/tags/') && vars[format('{0}_UPDATE_PUBLIC_KEY', matrix.brand.vars_prefix)] || !startsWith(github.ref, 'refs/tags/') && vars.UPDATE_TEST_PUBLIC_KEY || '' }}
       UPDATE_FEED_URL: ${{ startsWith(github.ref, 'refs/tags/') && format('https://github.com/{0}/releases/latest/download/{1}-appcast-macos.xml', matrix.brand.release_repo, matrix.brand.name) || format('https://github.com/{0}/releases/download/updater-test/{1}-appcast-macos.xml', github.repository, matrix.brand.name) }}
     steps:
@@ -1173,90 +1119,64 @@ jobs:
           fi
 
   # ─────────────────────────────────────────────────────────────
-  # UPDATE FEEDS - signed Sparkle (macOS) and WinSparkle (Windows) feeds
-  # for the euro-office packages (build/updates/appcast.py)
-  #
-  # Tags: added to the release; the apps read them through
-  # releases/latest/download/, so only stable releases are offered.
-  # Manual runs with publish_updater_test: the packages and feeds replace
-  # the updater-test pre-release's, which builds of no tag check, signed
-  # with the test key. Nextcloud Office packages are signed by hand after
-  # the build, so their feeds have to be made after that.
+  # UPDATER TEST - manual runs with publish_updater_test put this build's
+  # euro-office Windows/macOS packages on the updater-test pre-release,
+  # where builds of no tag look for updates (feeds: update-feeds below)
   # ─────────────────────────────────────────────────────────────
-  update-feeds:
+  updater-test-release:
     runs-on: ubuntu-latest
-    needs: [version, build-windows, build-macos, publish-release]
-    if: >-
-      always() && needs.build-windows.result == 'success' && needs.build-macos.result == 'success' &&
-      ((startsWith(github.ref, 'refs/tags/') && needs.publish-release.result == 'success') ||
-       (github.event_name == 'workflow_dispatch' && inputs.publish_updater_test))
+    needs: [build-windows, build-macos]
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_updater_test
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO: ${{ github.repository }}
-      IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
-      TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'updater-test' }}
-      UPDATE_VERSION: ${{ needs.version.outputs.update_version }}
-      UPDATE_PRIVATE_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.EURO_OFFICE_UPDATE_PRIVATE_KEY || secrets.UPDATE_TEST_PRIVATE_KEY }}
-      UPDATE_PUBLIC_KEY: ${{ startsWith(github.ref, 'refs/tags/') && vars.EURO_OFFICE_UPDATE_PUBLIC_KEY || vars.UPDATE_TEST_PUBLIC_KEY }}
+      TAG: updater-test
     steps:
-      - name: Check the update keys
-        id: keys
-        run: |
-          if [ -z "$UPDATE_PRIVATE_KEY" ] || [ -z "$UPDATE_PUBLIC_KEY" ]; then
-            echo "::notice::No update key pair for $TAG, so no update feeds"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - if: steps.keys.outputs.skip != 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          sparse-checkout: build/updates
-          persist-credentials: false
-
-      - if: steps.keys.outputs.skip != 'true'
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           pattern: '*-packages-euro-office-*'
           path: dist
           merge-multiple: true
 
-      - name: Publish the packages to updater-test
-        if: steps.keys.outputs.skip != 'true' && env.IS_TAG != 'true'
+      - name: Replace the updater-test packages
         run: |
           set -euo pipefail
+          notes="Test of in-app updates, from run $GITHUB_RUN_ID. Not a release."
           if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
             # Only this build's packages: the feed must offer nothing else
             gh release view "$TAG" -R "$REPO" --json assets --jq '.assets[].name' |
               while read -r name; do gh release delete-asset "$TAG" "$name" -R "$REPO" --yes; done
-            gh release edit "$TAG" -R "$REPO" --notes "Test of in-app updates, from run $GITHUB_RUN_ID. Not a release."
+            gh release edit "$TAG" -R "$REPO" --notes "$notes"
           else
             gh release create "$TAG" -R "$REPO" --prerelease --latest=false --target "$GITHUB_SHA" \
-              --title "Updater test" --notes "Test of in-app updates, from run $GITHUB_RUN_ID. Not a release."
+              --title "Updater test" --notes "$notes"
           fi
           mapfile -t files < <(find dist -name '*-macos-*.dmg' -o -name '*-windows-*.exe' | sort)
           gh release upload "$TAG" -R "$REPO" "${files[@]}"
 
-      - name: Sign the packages and write the feeds
-        if: steps.keys.outputs.skip != 'true'
-        run: |
-          set -euo pipefail
-          pip install --quiet cryptography
-          short="${GITHUB_REF_NAME#v}"
-          [ "$IS_TAG" = true ] || short="$UPDATE_VERSION"
-          mapfile -t files < <(find dist -name '*-macos-*.dmg' -o -name '*-windows-*.exe' | sort)
-          # The feeds link the release's copies, found by SHA-256
-          for attempt in 1 2 3; do
-            gh api "repos/$REPO/releases/tags/$TAG" --jq .assets > assets.json
-            python3 build/updates/appcast.py feed --brand euro-office --title Euro-Office \
-              --version "$UPDATE_VERSION" --short-version "$short" \
-              --release-assets assets.json --public-key "$UPDATE_PUBLIC_KEY" \
-              --out feeds "${files[@]}" && break
-            [ "$attempt" = 3 ] && exit 1
-            sleep 20
-          done
-          gh release upload "$TAG" -R "$REPO" --clobber feeds/*.xml
+  # ─────────────────────────────────────────────────────────────
+  # UPDATE FEEDS - signed feeds for the euro-office Windows/macOS packages
+  # of a release (the apps read them through releases/latest/download/, so
+  # only stable releases are offered) or of updater-test. Nextcloud Office
+  # is code-signed by hand later; run update-feeds.yml for it afterwards.
+  # ─────────────────────────────────────────────────────────────
+  update-feeds:
+    needs: [version, publish-release, updater-test-release]
+    if: >-
+      always() &&
+      ((startsWith(github.ref, 'refs/tags/') && needs.publish-release.result == 'success') ||
+       needs.updater-test-release.result == 'success')
+    permissions:
+      contents: write
+    uses: ./.github/workflows/update-feeds.yml
+    with:
+      tag: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'updater-test' }}
+      brand: euro-office
+      test: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      update_version: ${{ needs.version.outputs.update_version }}
+    secrets: inherit
 
   # ─────────────────────────────────────────────────────────────
   # PUBLISH - nextcloud-office to nextcloud-releases/Office-DesktopEditors
