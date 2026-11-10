@@ -12,8 +12,8 @@ as a ZIP and an Inno Setup installer (optionally an MSI).
 ## Prerequisites
 
 - **Windows** with **Visual Studio 2022** including the C++ x64 toolset. The
-  build additionally needs the **MSVC v141 toolset**, the **Windows 10 SDK
-  (10.0.19041.0)**, and **ATL + MFC**. If you don't have those components,
+  build additionally needs the **MSVC v141 toolset**, the **Windows SDK
+  10.0.22621.0** (CEF needs at least 10.0.20348), and **ATL + MFC**. If you don't have those components,
   `build.ps1 -InstallDeps` can add them (see below).
 - **Cygwin** (parts of the native build shell out to its `bash`/`make`/`sh`).
 - **CMake**, **Ninja**, and native (non-Cygwin) **perl**, **python**, and **git**
