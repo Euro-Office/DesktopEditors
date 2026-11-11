@@ -1007,6 +1007,48 @@ jobs:
     uses: ./.github/workflows/compiler-cache-prune.yml
 
   # ─────────────────────────────────────────────────────────────
+  # SMOKE TESTS (Linux)
+  #
+  # Installs each .deb from build-linux on a clean Ubuntu 24.04 and runs
+  # tests/smoke against it: start, create, open, edit, save and quit.
+  # Screenshots and app logs of every test end up in smoke-results-*.
+  # ─────────────────────────────────────────────────────────────
+  smoke-linux:
+    name: smoke-linux (${{ matrix.arch }}, ${{ matrix.brand }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    needs: build-linux
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        brand: [euro-office, nextcloud-office]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          sparse-checkout: tests/smoke
+          submodules: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-packages-${{ matrix.brand }}-${{ matrix.arch }}
+          path: packages
+
+      - name: Smoke tests
+        run: |
+          # the app package; the help package is *_all.deb
+          deb=$(ls packages/*_${{ matrix.arch }}.deb)
+          echo "Testing $deb"
+          tests/smoke/run.sh "$deb" results
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-results-${{ matrix.brand }}-${{ matrix.arch }}
+          path: results
+          if-no-files-found: ignore
+
+  # ─────────────────────────────────────────────────────────────
   # Points release/v* PRs (opened by Euro-Office/release) to the test
   # build's artifacts. Edits its previous comment on re-runs.
   # ─────────────────────────────────────────────────────────────
