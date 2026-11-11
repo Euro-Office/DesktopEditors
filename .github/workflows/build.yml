@@ -617,7 +617,7 @@ jobs:
             desktop-apps/package/inno/*-windows-*.exe
             desktop-apps/package/advinst/*.msi
           # Kept longer on tags for the publish jobs and the manual signing.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 3 }}
 
       # Input for build/windows/sign-package.ps1 on the signing server, which
       # signs the binaries and builds + signs the ZIP and Inno installer.
@@ -628,7 +628,7 @@ jobs:
           path: windows-signing-bundle.tar
           if-no-files-found: error
           # Kept longer on tags for the publish jobs and the manual signing.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 1 }}
 
   # ─────────────────────────────────────────────────────────────
   # BUILD (Linux)
@@ -806,7 +806,7 @@ jobs:
             build/linux/deploy/packages/*.rpm
             build/linux/deploy/packages/*.tar.xz
           # Kept longer on tags for the publish jobs and the manual signing.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 3 }}
 
   # ─────────────────────────────────────────────────────────────
   # BUILD (macOS)
@@ -994,7 +994,7 @@ jobs:
           name: macos-packages-${{ matrix.brand.name }}-arm64
           path: ${{ env.DMG_PATH }}
           # Kept longer on tags for the publish jobs and the manual signing.
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 7 }}
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/') && 30 || 3 }}
 
   # ─────────────────────────────────────────────────────────────
   # Deletes compiler caches that newer saves have superseded.
