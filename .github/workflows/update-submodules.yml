@@ -7,6 +7,8 @@ on:
 
 jobs:
   update-submodules:
+    # Private copies sync from the public repository instead
+    if: github.repository == 'Euro-Office/DesktopEditors'
     permissions:
       contents: write
       pull-requests: write
