@@ -61,7 +61,8 @@ env:
 jobs:
   version:
     # A private copy builds pull requests and manual runs only; its main just
-    # follows the public main. Every other job needs this one or wait-for-core.
+    # follows the public main. Every other job needs this one or one of
+    # the wait-for-core jobs.
     if: github.event_name != 'push' || github.repository == 'Euro-Office/DesktopEditors'
     runs-on: ubuntu-latest
     outputs:
@@ -423,6 +424,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   # Without a package of the pinned core yet, wait for core's CI instead of building core
   wait-for-core-wasm:
+    if: github.event_name != 'push' || github.repository == 'Euro-Office/DesktopEditors'
     uses: ./.github/workflows/wait-for-core.yml
     with:
       packages: wasm/engine
