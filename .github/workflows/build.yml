@@ -982,6 +982,19 @@ jobs:
             PRODUCT_BUNDLE_IDENTIFIER="${{ matrix.brand.bundle_id }}" \
             build
 
+      # Unbranded on purpose: a PRODUCT_NAME override would rename the test
+      # bundle too. One brand is enough, the code under test is shared.
+      - name: Run the Xcode unit tests
+        if: matrix.brand.name == 'euro-office'
+        run: |
+          # The test host runs outside /Applications: skip the "Move to Applications?" modal
+          defaults write asc.euro-office.Euro-Office moveToApplicationsFolderAlertSuppress -bool YES
+          xcodebuild -project "${{ matrix.brand.xcode_project }}" \
+            -scheme "${{ matrix.brand.xcode_scheme }}" -configuration Release \
+            -derivedDataPath "${RUNNER_TEMP}/xctest" \
+            EO_MAC_STAGE_DIR="${STAGE}" \
+            test
+
       - name: Build the DMG installer
         run: |
           ./build/macos/make-dmg.sh \
