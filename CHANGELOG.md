@@ -43,6 +43,7 @@
 * core: xlsx: preserve pivot cache records on XLSB to XLSX conversion by robintel in [core#169](https://github.com/Euro-Office/core/pull/169)
 * core: vsdx: Fix detection extension for empty vsdx by coffeemakr in [core#197](https://github.com/Euro-Office/core/pull/197)
 * core: officeutils: restore compatible ZIP headers for saved documents by rikled in [core#289](https://github.com/Euro-Office/core/pull/289)
+* core: zlib-ng-wasm: build minizip-ng with deflate support by rikled in [core#322](https://github.com/Euro-Office/core/pull/322)
 * sdkjs: use the standard wheel event in all editors (restores PDF scrolling in Chromium) by chrip in [sdkjs#110](https://github.com/Euro-Office/sdkjs/pull/110)
 * sdkjs: word: skip unused built-in table styles equal to the defaults on save by delmarguillen in [sdkjs#112](https://github.com/Euro-Office/sdkjs/pull/112)
 * web-apps: l10n: a quality review of the Danish translation across all editors by bargib in [web-apps#329](https://github.com/Euro-Office/web-apps/pull/329)
@@ -98,7 +99,7 @@
 * DesktopEditors: <https://github.com/Euro-Office/DesktopEditors/compare/8b25e8ace5e0...e681296d8173>
 * desktop-apps: <https://github.com/Euro-Office/desktop-apps/compare/7a1297b3172a...c05c2d128d47>
 * desktop-sdk: <https://github.com/Euro-Office/desktop-sdk/compare/8cc8d747cb48...9827bd5fc6d9>
-* core: <https://github.com/Euro-Office/core/compare/a4a1ba1e9c8e...749cc177d520>
+* core: <https://github.com/Euro-Office/core/compare/a4a1ba1e9c8e...0c489c97a84c>
 * sdkjs: <https://github.com/Euro-Office/sdkjs/compare/40d9b7780f11...a1b8cac5d1bc>
 * web-apps: <https://github.com/Euro-Office/web-apps/compare/ce0ba4954581...f8d4506c130d>
 
