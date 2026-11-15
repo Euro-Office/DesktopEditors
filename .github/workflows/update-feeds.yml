@@ -1,0 +1,108 @@
+# SPDX-FileCopyrightText: 2026 Euro-Office contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# Signed update feeds (Sparkle on macOS, WinSparkle on Windows) for the
+# Windows installers and the macOS DMG of a release.
+#
+# Signs the files as they are on the release, so run it after the final
+# files are there. Euro-Office releases and the updater-test pre-release get
+# it from the build workflow; Nextcloud Office packages are code-signed by
+# hand, so run this by hand once they are uploaded:
+#   gh workflow run update-feeds.yml -f tag=v9.3.8 -f brand=nextcloud-office
+#
+# Keys: <BRAND>_UPDATE_PUBLIC_KEY (variable) and <BRAND>_UPDATE_PRIVATE_KEY
+# (secret); with test, UPDATE_TEST_PUBLIC_KEY / UPDATE_TEST_PRIVATE_KEY.
+# Without them this does nothing. See build/README.md.
+name: Update feeds
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, e.g. v9.3.8
+        required: true
+        type: string
+      brand:
+        description: Brand, which also picks the release repository
+        required: true
+        type: choice
+        options: [nextcloud-office, euro-office]
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      brand:
+        required: true
+        type: string
+      test:
+        description: The updater-test pre-release and the test key
+        type: boolean
+        default: false
+      update_version:
+        description: The builds' update version; default from the tag
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-feeds-${{ inputs.brand }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  feeds:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+      BRAND: ${{ inputs.brand }}
+      UPDATE_VERSION: ${{ inputs.update_version }}
+      # Euro-Office releases are in this repository, Nextcloud Office's in
+      # the releases repository (same token as publish-nextcloud-release)
+      REPO: ${{ inputs.brand == 'nextcloud-office' && 'nextcloud-releases/Office-DesktopEditors' || github.repository }}
+      GH_TOKEN: ${{ inputs.brand == 'nextcloud-office' && secrets.NEXTCLOUD_RELEASES_TOKEN || secrets.GITHUB_TOKEN }}
+      # The name is chosen first: a test run must never fall back to a real key
+      KEY_PREFIX: ${{ inputs.test && 'UPDATE_TEST' || inputs.brand == 'nextcloud-office' && 'NEXTCLOUD_OFFICE_UPDATE' || 'EURO_OFFICE_UPDATE' }}
+      UPDATE_PUBLIC_KEY: ${{ vars[format('{0}_PUBLIC_KEY', inputs.test && 'UPDATE_TEST' || inputs.brand == 'nextcloud-office' && 'NEXTCLOUD_OFFICE_UPDATE' || 'EURO_OFFICE_UPDATE')] }}
+      UPDATE_PRIVATE_KEY: ${{ secrets[format('{0}_PRIVATE_KEY', inputs.test && 'UPDATE_TEST' || inputs.brand == 'nextcloud-office' && 'NEXTCLOUD_OFFICE_UPDATE' || 'EURO_OFFICE_UPDATE')] }}
+    steps:
+      - name: Check the update keys
+        id: keys
+        run: |
+          if [ -z "$UPDATE_PRIVATE_KEY" ] || [ -z "$UPDATE_PUBLIC_KEY" ]; then
+            echo "::notice::No ${KEY_PREFIX}_PUBLIC_KEY variable / ${KEY_PREFIX}_PRIVATE_KEY secret, so no update feeds"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.keys.outputs.skip != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: build
+          persist-credentials: false
+
+      - name: Download the updates from the release
+        if: steps.keys.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" -R "$REPO" -D dist -p '*-macos-*.dmg' -p '*-windows-*.exe'
+          ls -l dist
+
+      - name: Sign them and upload the feeds
+        if: steps.keys.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          pip install --quiet cryptography
+          # The version the builds compare with the feed's
+          if [ -z "$UPDATE_VERSION" ]; then
+            UPDATE_VERSION=$(build/version.sh --tag "$TAG" | sed -n 's/^update_version=//p')
+          fi
+          short="${TAG#v}"
+          [ "${{ inputs.test }}" = true ] && short="$UPDATE_VERSION"
+          gh api "repos/$REPO/releases/tags/$TAG" --jq .assets > assets.json
+          python3 build/updates/appcast.py feed --brand "$BRAND" \
+            --title "${{ inputs.brand == 'nextcloud-office' && 'Nextcloud Office' || 'Euro-Office' }}" \
+            --version "$UPDATE_VERSION" --short-version "$short" \
+            --release-assets assets.json --public-key "$UPDATE_PUBLIC_KEY" \
+            --out feeds dist/*
+          gh release upload "$TAG" -R "$REPO" --clobber feeds/*.xml
