@@ -49,6 +49,101 @@ env:
 # ─────────────────────────────────────────────────────────────
 
 jobs:
+  # Pull requests build only the euro-office brand. release/*, renovate/*
+  # and the submodule bump PRs, PRs labelled full-build, main, tags and
+  # manual runs build every brand. The label is read from the API, so
+  # adding it takes effect on the next push or "Re-run all jobs".
+  # Every brand-specific setting lives here; the build jobs take the
+  # fields they need from matrix.brand.
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      brands: ${{ steps.plan.outputs.brands }}
+    steps:
+      - name: Choose brands
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.head_ref }}
+          # Only one Xcode project: xcode_project/xcode_scheme are the same for
+          # every brand. euro-office's brand-assets target is a dummy with an
+          # empty overlay by design (expect_assets). Empty icon SVG fields mean "use
+          # regenerate-branding-assets.sh's own committed defaults".
+          # extra_bake_files_common is relative to workdir ./build,
+          # extra_bake_files_linux to ./build/linux (one level deeper).
+          # nextcloud-office on Windows is only a signing bundle here; it is
+          # signed and packaged on the signing server (build/windows/sign-package.ps1).
+          BRANDS: |
+            [
+              {
+                "name": "euro-office",
+                "company_name": "Euro-Office",
+                "product_name": "Euro-Office",
+                "publisher_name": "Euro-Office",
+                "publisher_url": "https://github.com/Euro-Office/DesktopEditors",
+                "branding_dir": ".",
+                "cache_prefix": "",
+                "extra_bake_files": "",
+                "expect_assets": false,
+                "image_name": "desktop-common",
+                "extra_bake_files_common": "",
+                "extra_targets_common": "",
+                "extra_bake_files_linux": "",
+                "extra_targets_linux": "",
+                "sign": false,
+                "xcode_project": "desktop-apps/macos/Euro-Office.xcodeproj",
+                "xcode_scheme": "Euro-Office-arm",
+                "app_bundle": "Euro-Office.app",
+                "package_name": "Euro-Office-DesktopEditors",
+                "bundle_id": "asc.euro-office.Euro-Office",
+                "app_icon_svg": "",
+                "tab_icon_light_svg": "",
+                "tab_icon_dark_svg": ""
+              },
+              {
+                "name": "nextcloud-office",
+                "company_name": "Nextcloud Office",
+                "product_name": "Nextcloud Office",
+                "publisher_name": "Nextcloud GmbH",
+                "publisher_url": "https://nextcloud.com/",
+                "branding_dir": "./build/brands/nextcloud-office-brand",
+                "cache_prefix": "nextcloud-office-",
+                "extra_bake_files": "./brands/nextcloud-office-brand/brand-desktop.hcl",
+                "expect_assets": true,
+                "image_name": "no-desktop-common",
+                "extra_bake_files_common": "",
+                "extra_targets_common": "",
+                "extra_bake_files_linux": "",
+                "extra_targets_linux": "",
+                "sign": true,
+                "xcode_project": "desktop-apps/macos/Euro-Office.xcodeproj",
+                "xcode_scheme": "Euro-Office-arm",
+                "app_bundle": "Nextcloud Office.app",
+                "package_name": "Nextcloud-Office-DesktopEditors",
+                "bundle_id": "asc.nextcloud-office.Nextcloud-Office",
+                "app_icon_svg": "build/brands/nextcloud-office-brand/svg/app-icon.svg",
+                "tab_icon_light_svg": "build/brands/nextcloud-office-brand/svg/logo-light.svg",
+                "tab_icon_dark_svg": "build/brands/nextcloud-office-brand/svg/logo-dark.svg"
+              }
+            ]
+        run: |
+          set -euo pipefail
+          full=true
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" && "$HEAD_REF" != release/* && "$HEAD_REF" != renovate/* && "$HEAD_REF" != chore/nightly-submodule-bump ]]; then
+            labels=$(gh pr view "$PR" -R "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')
+            grep -qx full-build <<<"$labels" || full=false
+          fi
+          if [[ "$full" == "true" ]]; then
+            brands=$(jq -c . <<<"$BRANDS")
+          else
+            echo "::notice::euro-office only. Add the full-build label and re-run for every brand."
+            brands=$(jq -c '[.[] | select(.name == "euro-office")]' <<<"$BRANDS")
+          fi
+          echo "brands=$brands" >> "$GITHUB_OUTPUT"
+
   version:
     runs-on: ubuntu-latest
     outputs:
@@ -129,22 +224,14 @@ jobs:
   brand-assets:
     name: brand-assets (${{ matrix.brand.name }})
     runs-on: ubuntu-latest
-    needs: version
+    needs: [plan, version]
     permissions:
       contents: read
       packages: write          # registry build cache only
     strategy:
       fail-fast: false
       matrix:
-        brand:
-          - name: euro-office
-            extra_bake_files: ""
-            cache_prefix: ""
-            expect_assets: false          # dummy target: empty overlay by design
-          - name: nextcloud-office
-            extra_bake_files: "./brands/nextcloud-office-brand/brand-desktop.hcl"
-            cache_prefix: "nextcloud-office-"
-            expect_assets: true
+        brand: ${{ fromJSON(needs.plan.outputs.brands) }}
     steps:
       - name: Checkout DesktopEditors repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -223,33 +310,14 @@ jobs:
   build-common:
     name: build-common (${{ matrix.brand.name }})
     runs-on: 'ubuntu-latest'
-    needs: [version, brand-assets, wait-for-core-wasm]
+    needs: [plan, version, brand-assets, wait-for-core-wasm]
     permissions:
       contents: write
       packages: write
     strategy:
       fail-fast: false
       matrix:
-        brand:
-          - name: euro-office
-            image_name: desktop-common
-            company_name: Euro-Office
-            product_name: Euro-Office
-            branding_dir: "."
-            extra_bake_files_common: ""
-            extra_targets_common: ""
-            cache_prefix: ""
-          - name: nextcloud-office
-            image_name: no-desktop-common
-            company_name: Nextcloud Office
-            product_name: Nextcloud Office
-            # Relative to the bake context (`..` from workdir ./build) = repo root.
-            branding_dir: "./build/brands/nextcloud-office-brand"
-            # Relative to workdir ./build. Leave empty until the brand repo
-            # ships a desktop bake file.
-            extra_bake_files_common: ""
-            extra_targets_common: ""
-            cache_prefix: "nextcloud-office-"
+        brand: ${{ fromJSON(needs.plan.outputs.brands) }}
     steps:
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -411,25 +479,14 @@ jobs:
   build-windows:
     name: build-windows (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'windows-11-arm' || 'windows-2022' }}
-    needs: [version, build-common, brand-assets, wait-for-core]
+    needs: [plan, version, build-common, brand-assets, wait-for-core]
     strategy:
       fail-fast: false
       matrix:
         arch:
           - amd64
           - arm64
-        brand:
-          - name: euro-office
-            company_name: Euro-Office
-            product_name: Euro-Office
-            # Unsigned, packaged here and published to the GitHub release.
-            sign: false
-          - name: nextcloud-office
-            company_name: Nextcloud Office
-            product_name: Nextcloud Office
-            # Only a signing bundle here; signed + packaged on the signing
-            # server (build/windows/sign-package.ps1).
-            sign: true
+        brand: ${{ fromJSON(needs.plan.outputs.brands) }}
     env:
       PYTHONUTF8: "1"
       # A directory saved as one Actions cache: sccache's own GitHub backend
@@ -642,7 +699,7 @@ jobs:
   build-linux:
     name: build-linux (${{ matrix.arch }}, ${{ matrix.brand.name }})
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    needs: [version, build-common, brand-assets, wait-for-core]
+    needs: [plan, version, build-common, brand-assets, wait-for-core]
     permissions:
       contents: write
       packages: write
@@ -652,30 +709,7 @@ jobs:
         arch:
           - amd64
           - arm64
-        brand:
-          - name: euro-office
-            company_name: Euro-Office
-            product_name: Euro-Office
-            publisher_name: Euro-Office
-            publisher_url: https://github.com/Euro-Office/DesktopEditors
-            branding_dir: "."
-            extra_bake_files_linux: ""
-            extra_targets_linux: ""
-            cache_prefix: ""
-          - name: nextcloud-office
-            company_name: Nextcloud Office
-            product_name: Nextcloud Office
-            # Same publisher as the Windows installer (brand config/branding.iss).
-            publisher_name: Nextcloud GmbH
-            publisher_url: https://nextcloud.com/
-            # Bake context for ./build/linux targets is `../..` = repo root,
-            # so this is the same string as in build-common.
-            branding_dir: "./build/brands/nextcloud-office-brand"
-            # Relative to workdir ./build/linux, i.e. one level deeper than
-            # build-common: "../brands/nextcloud-office-brand/<file>.hcl"
-            extra_bake_files_linux: ""
-            extra_targets_linux: ""
-            cache_prefix: "nextcloud-office-"
+        brand: ${{ fromJSON(needs.plan.outputs.brands) }}
     steps:
       - name: Checkout fork repository (with submodules)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -830,38 +864,11 @@ jobs:
     name: build-macos (${{ matrix.brand.name }})
     # V8 needs Xcode 16's SDK
     runs-on: macos-15
-    needs: [version, build-common, wait-for-core]
+    needs: [plan, version, build-common, wait-for-core]
     strategy:
       fail-fast: false
       matrix:
-        brand:
-          # There is only one Xcode project - xcode_project/xcode_scheme stay
-          # the same for every brand. Only the branded, build-time-overridden
-          # settings (app_bundle/package_name/company_name/product_name/bundle_id)
-          # and the icon source SVGs differ per row. Empty icon SVG fields
-          # mean "use regenerate-branding-assets.sh's own committed defaults".
-          - name: euro-office
-            xcode_project: desktop-apps/macos/Euro-Office.xcodeproj
-            xcode_scheme: Euro-Office-arm
-            app_bundle: Euro-Office.app
-            package_name: Euro-Office-DesktopEditors
-            company_name: Euro-Office
-            product_name: Euro-Office
-            bundle_id: asc.euro-office.Euro-Office
-            app_icon_svg: ""
-            tab_icon_light_svg: ""
-            tab_icon_dark_svg: ""
-          - name: nextcloud-office
-            xcode_project: desktop-apps/macos/Euro-Office.xcodeproj
-            xcode_scheme: Euro-Office-arm
-            app_bundle: Nextcloud Office.app
-            package_name: Nextcloud-Office-DesktopEditors
-            company_name: Nextcloud Office
-            product_name: Nextcloud Office
-            bundle_id: asc.nextcloud-office.Nextcloud-Office
-            app_icon_svg: build/brands/nextcloud-office-brand/svg/app-icon.svg
-            tab_icon_light_svg: build/brands/nextcloud-office-brand/svg/logo-light.svg
-            tab_icon_dark_svg: build/brands/nextcloud-office-brand/svg/logo-dark.svg
+        brand: ${{ fromJSON(needs.plan.outputs.brands) }}
     env:
       REPO: ${{ github.workspace }}
       EO_3RDPARTY: /Users/runner/eo-3rdparty
