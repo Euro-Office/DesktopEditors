@@ -5,9 +5,26 @@ on:
   push:
     paths:
       - 'CHANGELOG.md'
+  pull_request:
+    paths:
+      - '.github/workflows/build.yml'
+      - '.github/scripts/test-plan.sh'
+
+permissions:
+  contents: read
 
 jobs:
+  build-plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: .github/scripts/test-plan.sh .github/workflows/build.yml
+
   markdownlint:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
