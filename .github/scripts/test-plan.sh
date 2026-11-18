@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Usage: test-plan.sh <build.yml>. Runs the plan step for each event and checks the brands.
+# SPDX-FileCopyrightText: 2026 Euro-Office contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Usage: test-plan.sh <build.yml>. Runs the plan step for each event and checks the brands,
+# then checks that ci-result runs on every run and only passes when all needed jobs succeeded.
 set -euo pipefail
 wf=$1; dir=$(mktemp -d)
 yq '.jobs.plan.steps[0].run' "$wf" > "$dir/run.sh"
@@ -21,4 +25,17 @@ check pull_request renovate/vue "" $both
 check pull_request chore/nightly-submodule-bump "" $both
 check push "" "" $both
 check workflow_dispatch "" "" $both
+
+# ci-result: a skipped required check counts as passed, so the job itself must never skip.
+cond=$(yq '.jobs.ci-result.if' "$wf")
+if [[ "$cond" == "always()" ]]; then echo "ok   ci-result if: $cond"; else echo "FAIL ci-result if: $cond, want always()"; fail=1; fi
+yq '.jobs.ci-result.steps[0].run' "$wf" > "$dir/result.sh"
+result() { # results expected
+  if RESULTS=$1 bash "$dir/result.sh" >/dev/null; then got=pass; else got=fail; fi
+  if [[ "$got" == "$2" ]]; then echo "ok   ci-result [$1] -> $got"; else echo "FAIL ci-result [$1] -> $got, want $2"; fail=1; fi
+}
+result "success success success" pass
+result "success failure success" fail
+result "success cancelled success" fail
+result "success skipped success" fail
 exit $fail
