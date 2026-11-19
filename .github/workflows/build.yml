@@ -66,7 +66,7 @@ jobs:
   # Every brand-specific setting lives here; the build jobs take the
   # fields they need from matrix.brand.
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && 'self-hosted' || 'ubuntu-latest' }}
     permissions:
       pull-requests: read
     outputs:
@@ -159,7 +159,7 @@ jobs:
     # follows the public main. Every other job needs this one or one of
     # the wait-for-core jobs.
     if: github.event_name != 'push' || github.repository == 'Euro-Office/DesktopEditors'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && 'self-hosted' || 'ubuntu-latest' }}
     outputs:
       product_version:      ${{ steps.meta.outputs.product_version }}
       build_number:         ${{ steps.meta.outputs.build_number }}
@@ -237,7 +237,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   brand-assets:
     name: brand-assets (${{ matrix.brand.name }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && 'self-hosted' || 'ubuntu-latest' }}
     needs: [plan, version]
     permissions:
       contents: read
@@ -323,7 +323,7 @@ jobs:
 
   build-common:
     name: build-common (${{ matrix.brand.name }})
-    runs-on: 'ubuntu-latest'
+    runs-on: ${{ github.event.repository.private && 'self-hosted' || 'ubuntu-latest' }}
     needs: [plan, version, brand-assets, wait-for-core-wasm]
     permissions:
       contents: write
@@ -737,7 +737,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   build-linux:
     name: build-linux (${{ matrix.arch }}, ${{ matrix.brand.name }})
-    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || github.event.repository.private && 'self-hosted' || 'ubuntu-latest' }}
     needs: [plan, version, build-common, brand-assets, wait-for-core]
     if: vars.DESKTOP_PLATFORMS == '' || contains(vars.DESKTOP_PLATFORMS, 'linux')
     permissions:
@@ -1067,7 +1067,7 @@ jobs:
   # The one required check: brand jobs come and go with the plan, so the
   # ruleset can't list them. Skipped counts as failed here (none should skip).
   ci-result:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && 'self-hosted' || 'ubuntu-latest' }}
     needs: [plan, version, brand-assets, build-common, build-windows, build-linux, build-macos]
     if: always()
     permissions: {}
@@ -1093,7 +1093,7 @@ jobs:
   # build's artifacts. Edits its previous comment on re-runs.
   # ─────────────────────────────────────────────────────────────
   pr-comment:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && 'self-hosted' || 'ubuntu-latest' }}
     needs: [build-linux, build-windows, build-macos]
     if: ${{ !cancelled() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') }}
     permissions:
@@ -1140,7 +1140,7 @@ jobs:
   # anything else (v9.3.4-beta.1, v9.3.4-rc.1, ...) is a prerelease.
   # ─────────────────────────────────────────────────────────────
   release-info:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && 'self-hosted' || 'ubuntu-latest' }}
     if: startsWith(github.ref, 'refs/tags/') && github.repository == 'Euro-Office/DesktopEditors'
     outputs:
       stable: ${{ steps.check.outputs.stable }}
@@ -1157,7 +1157,7 @@ jobs:
   # PUBLISH - euro-office to GitHub Release (this repository)
   # ─────────────────────────────────────────────────────────────
   publish-release:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && 'self-hosted' || 'ubuntu-latest' }}
     needs: [release-info, build-linux, build-windows, build-macos]
     if: startsWith(github.ref, 'refs/tags/') && github.repository == 'Euro-Office/DesktopEditors'
     permissions:
@@ -1209,7 +1209,7 @@ jobs:
   # the DocumentServer release and its image on ghcr.io/nextcloud-releases.
   # ─────────────────────────────────────────────────────────────
   publish-nextcloud-release:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && 'self-hosted' || 'ubuntu-latest' }}
     needs: [release-info, build-linux, build-windows, build-macos]
     if: startsWith(github.ref, 'refs/tags/') && github.repository == 'Euro-Office/DesktopEditors'
     permissions:
@@ -1263,7 +1263,7 @@ jobs:
   # beta/dev builds stay downloadable.
   # ─────────────────────────────────────────────────────────────
   publish-files:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && 'self-hosted' || 'ubuntu-latest' }}
     needs: [version, build-linux, build-windows, build-macos]
     if: startsWith(github.ref, 'refs/tags/') && github.repository == 'Euro-Office/DesktopEditors'
     permissions:
