@@ -15,8 +15,9 @@ FROM scratch AS desktop-common
     COPY --from=desktop-js /app/loginpage/deploy/noconnect.html /editors/webext/noconnect.html
 
     COPY desktop-apps/common/converter/* /converter/
-    # Support only Nextcloud for now
+    # Cloud providers shown in the "Connect to cloud" dialog.
     COPY desktop-apps/common/loginpage/providers/nextcloud /providers/nextcloud
+    COPY desktop-apps/common/loginpage/providers/opencloud /providers/opencloud
     COPY desktop-apps/common/templates /converter/templates
 
     COPY desktop-sdk/ChromiumBasedEditors/resources/ /editors/sdkjs/common/Images/
