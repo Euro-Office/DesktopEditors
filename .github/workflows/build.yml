@@ -66,6 +66,8 @@ jobs:
   # Every brand-specific setting lives here; the build jobs take the
   # fields they need from matrix.brand.
   plan:
+    # As version: a private copy does not build pushes.
+    if: github.event_name != 'push' || github.repository == 'Euro-Office/DesktopEditors'
     runs-on: ${{ github.event.repository.private && 'self-hosted' || 'ubuntu-latest' }}
     permissions:
       pull-requests: read
@@ -1073,8 +1075,27 @@ jobs:
     permissions: {}
     steps:
       - env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
+          RESULTS: ${{ needs.plan.result }} ${{ needs.version.result }} ${{ needs.brand-assets.result }} ${{ needs.build-common.result }}
+          WINDOWS: ${{ needs.build-windows.result }}
+          LINUX: ${{ needs.build-linux.result }}
+          MACOS: ${{ needs.build-macos.result }}
+          PLATFORMS: ${{ vars.DESKTOP_PLATFORMS }}
+          NOT_BUILT: ${{ github.event_name == 'push' && github.repository != 'Euro-Office/DesktopEditors' }}
         run: |
+          # A private copy does not build pushes (see version).
+          if [[ "${NOT_BUILT:-}" == "true" ]]; then
+            echo "Nothing is built on a push to a private copy."
+            exit 0
+          fi
+          # A platform that DESKTOP_PLATFORMS leaves out is skipped on purpose.
+          for platform in windows linux macos; do
+            name=${platform^^}
+            result=${!name:-}
+            if [[ -n "${PLATFORMS:-}" && "$PLATFORMS" != *"$platform"* && "$result" == skipped ]]; then
+              continue
+            fi
+            RESULTS+=" $result"
+          done
           echo "$RESULTS"
           [[ ! " $RESULTS " =~ " "(failure|cancelled|skipped)" " ]]
 
@@ -1083,7 +1104,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   prune-compiler-caches:
     needs: [build-linux, build-windows, build-macos]
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    # Not on pushes to a private copy, where nothing is built (see version).
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'push' || github.repository == 'Euro-Office/DesktopEditors') }}
     permissions:
       actions: write
     uses: ./.github/workflows/compiler-cache-prune.yml

@@ -38,4 +38,12 @@ result "success success success" pass
 result "success failure success" fail
 result "success cancelled success" fail
 result "success skipped success" fail
+# A private copy leaves platforms out with DESKTOP_PLATFORMS and does not build pushes.
+export PLATFORMS=linux WINDOWS=skipped MACOS=skipped
+LINUX=success result "success success" pass
+LINUX=failure result "success success" fail
+LINUX=skipped result "success success" fail
+LINUX=success result "success failure" fail
+PLATFORMS= LINUX=success result "success success" fail
+NOT_BUILT=true LINUX=skipped result "skipped skipped" pass
 exit $fail
