@@ -1077,12 +1077,17 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   # Classify the tag: v9.3.4 and its patch builds (v9.3.4-1) are stable;
   # anything else (v9.3.4-beta.1, v9.3.4-rc.1, ...) is a prerelease.
+  # Only the highest stable tag is latest, so a 9.3.x patch tagged after
+  # 9.4.0 does not take the GitHub "latest" flag (Euro-Office/release#14).
   # ─────────────────────────────────────────────────────────────
   release-info:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
     outputs:
       stable: ${{ steps.check.outputs.stable }}
+      latest: ${{ steps.latest.outputs.latest }}
     steps:
       - id: check
         run: |
@@ -1091,6 +1096,25 @@ jobs:
           else
             echo "stable=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # Shared with DocumentServer, which also tests it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Euro-Office/DocumentServer
+          ref: main
+          sparse-checkout: .github/scripts/is-latest.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - id: latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          latest=$(gh api --paginate "repos/$REPO/git/matching-refs/tags/v" --jq '.[].ref | ltrimstr("refs/tags/")' \
+            | .github/scripts/is-latest.sh "$GITHUB_REF_NAME")
+          echo "latest=$latest" | tee -a "$GITHUB_OUTPUT"
 
   # ─────────────────────────────────────────────────────────────
   # PUBLISH - euro-office to GitHub Release (this repository)
@@ -1122,7 +1146,7 @@ jobs:
           TITLE: Euro-Office Desktop Editors ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           PRERELEASE: ${{ needs.release-info.outputs.stable != 'true' }}
-          LATEST: ${{ needs.release-info.outputs.stable == 'true' }}
+          LATEST: ${{ needs.release-info.outputs.latest == 'true' }}
         run: |
           set -euo pipefail
           # The CHANGELOG.md section of this tag, written by Euro-Office/release.
@@ -1177,7 +1201,7 @@ jobs:
           TITLE: Nextcloud Office Desktop ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           PRERELEASE: ${{ needs.release-info.outputs.stable != 'true' }}
-          LATEST: ${{ needs.release-info.outputs.stable == 'true' }}
+          LATEST: ${{ needs.release-info.outputs.latest == 'true' }}
         run: |
           set -euo pipefail
           # The CHANGELOG.md section of this tag, written by Euro-Office/release.
